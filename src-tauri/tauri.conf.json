@@ -77,7 +77,8 @@
         "resizable": true,
         "title": "Prompt Manager",
         "width": 1200,
-        "center": true
+        "center": true,
+        "visible": false
       }
     ]
   }
