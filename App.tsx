@@ -8,6 +8,8 @@ import { dbService } from './services/dbService';
 import { AlertCircle, X } from 'lucide-react';
 import { t } from './utils/i18n';
 
+import { ToastProvider } from './context/ToastContext';
+
 const App: React.FC = () => {
     const [activeView, setActiveView] = useState<ViewMode>('prompts');
     const [tabs, setTabs] = useState<EditorTab[]>([]);
@@ -239,94 +241,98 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] p-2 gap-2 relative transition-colors duration-200">
-            {/* Top Main Area */}
-            <div className="flex-1 flex flex-row overflow-hidden">
+        <ToastProvider>
+            <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] p-2 gap-2 relative transition-colors duration-200">
+                {/* ... existing content ... */}
+                {/* Copied from original file, just wrapping */}
+                {/* Top Main Area */}
+                <div className="flex-1 flex flex-row overflow-hidden">
+                    {/* ... */}
+                    {/* Left: Activity Bar */}
+                    <div className="flex-shrink-0 mr-2 h-full">
+                        <ActivityBar
+                            activeView={activeView}
+                            onViewChange={setActiveView}
+                            onOpenSettings={handleOpenSettings}
+                            language={lang}
+                        />
+                    </div>
 
-                {/* Left: Activity Bar */}
-                <div className="flex-shrink-0 mr-2 h-full">
-                    <ActivityBar
-                        activeView={activeView}
-                        onViewChange={setActiveView}
-                        onOpenSettings={handleOpenSettings}
-                        language={lang}
+                    {/* Left: Sidebar Panel (Collapsible) + Resizer */}
+                    {isSidebarVisible && (
+                        <>
+                            <SidePanel
+                                isVisible={isSidebarVisible}
+                                activeView={activeView}
+                                onSelectPrompt={handleOpenPrompt}
+                                language={lang}
+                                width={sidebarWidth}
+                            />
+                            {/* Resizer Handle */}
+                            <div
+                                className="w-2 hover:bg-blue-500/10 active:bg-blue-500/30 cursor-col-resize transition-colors flex-shrink-0 z-10"
+                                onMouseDown={startResizing}
+                            />
+                        </>
+                    )}
+
+                    {/* Center: Editor Area */}
+                    <MainContent
+                        tabs={tabs}
+                        activeTabId={activeTabId}
+                        onSwitchTab={setActiveTabId}
+                        onCloseTab={handleTabCloseRequest}
+                        onUpdateTab={handleUpdateTab}
+                        onSave={handleSave}
+                        highlight={editorHighlight}
+                        settings={settings}
+                        onUpdateSettings={setSettings}
+                        theme={currentTheme === 'light' ? 'light' : 'vs-dark'}
                     />
+
                 </div>
 
-                {/* Left: Sidebar Panel (Collapsible) + Resizer */}
-                {isSidebarVisible && (
-                    <>
-                        <SidePanel
-                            isVisible={isSidebarVisible}
-                            activeView={activeView}
-                            onSelectPrompt={handleOpenPrompt}
-                            language={lang}
-                            width={sidebarWidth}
-                        />
-                        {/* Resizer Handle */}
-                        <div
-                            className="w-2 hover:bg-blue-500/10 active:bg-blue-500/30 cursor-col-resize transition-colors flex-shrink-0 z-10"
-                            onMouseDown={startResizing}
-                        />
-                    </>
-                )}
+                {/* Bottom: Status Bar */}
+                <StatusBar language={lang} />
 
-                {/* Center: Editor Area */}
-                <MainContent
-                    tabs={tabs}
-                    activeTabId={activeTabId}
-                    onSwitchTab={setActiveTabId}
-                    onCloseTab={handleTabCloseRequest}
-                    onUpdateTab={handleUpdateTab}
-                    onSave={handleSave}
-                    highlight={editorHighlight}
-                    settings={settings}
-                    onUpdateSettings={setSettings}
-                    theme={currentTheme === 'light' ? 'light' : 'vs-dark'}
-                />
+                {/* Close Confirmation Modal */}
+                {showCloseModal && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                        <div className="w-[400px] bg-[var(--modal-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl p-6 flex flex-col">
+                            <div className="flex items-center space-x-3 mb-4 text-[var(--text-primary)]">
+                                <AlertCircle className="text-yellow-500" size={24} />
+                                <h3 className="text-lg font-semibold">{t('modal.unsavedTitle', lang)}</h3>
+                            </div>
 
-            </div>
+                            <p className="text-[var(--text-secondary)] text-sm mb-6">
+                                {t('modal.unsavedMessage', lang).replace('{name}', tabs.find(t => t.id === tabToClose)?.name || '')}
+                            </p>
 
-            {/* Bottom: Status Bar */}
-            <StatusBar language={lang} />
-
-            {/* Close Confirmation Modal */}
-            {showCloseModal && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="w-[400px] bg-[var(--modal-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl p-6 flex flex-col">
-                        <div className="flex items-center space-x-3 mb-4 text-[var(--text-primary)]">
-                            <AlertCircle className="text-yellow-500" size={24} />
-                            <h3 className="text-lg font-semibold">{t('modal.unsavedTitle', lang)}</h3>
-                        </div>
-
-                        <p className="text-[var(--text-secondary)] text-sm mb-6">
-                            {t('modal.unsavedMessage', lang).replace('{name}', tabs.find(t => t.id === tabToClose)?.name || '')}
-                        </p>
-
-                        <div className="flex justify-end space-x-3">
-                            <button
-                                onClick={() => forceCloseTab(tabToClose!)}
-                                className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)] transition-colors"
-                            >
-                                {t('modal.dontSave', lang)}
-                            </button>
-                            <button
-                                onClick={() => setShowCloseModal(false)}
-                                className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)] transition-colors"
-                            >
-                                {t('modal.cancel', lang)}
-                            </button>
-                            <button
-                                onClick={handleSaveAndClose}
-                                className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-md transition-colors"
-                            >
-                                {t('modal.save', lang)}
-                            </button>
+                            <div className="flex justify-end space-x-3">
+                                <button
+                                    onClick={() => forceCloseTab(tabToClose!)}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)] transition-colors"
+                                >
+                                    {t('modal.dontSave', lang)}
+                                </button>
+                                <button
+                                    onClick={() => setShowCloseModal(false)}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)] transition-colors"
+                                >
+                                    {t('modal.cancel', lang)}
+                                </button>
+                                <button
+                                    onClick={handleSaveAndClose}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-md transition-colors"
+                                >
+                                    {t('modal.save', lang)}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+            </div>
+        </ToastProvider>
     );
 };
 

@@ -84,6 +84,10 @@ export const translations = {
     'modal.dontSave': "Don't Save",
     'modal.cancel': 'Cancel',
     'modal.save': 'Save',
+
+    // Toast
+    'toast.itemAdded': 'Added {type}: {name}',
+    'toast.addError': 'Failed to add item',
   },
   zh: {
     'app.name': 'PromptArchitect',
@@ -166,6 +170,10 @@ export const translations = {
     'modal.dontSave': '不保存',
     'modal.cancel': '取消',
     'modal.save': '保存',
+
+    // Toast
+    'toast.itemAdded': '已添加 {type}: {name}',
+    'toast.addError': '添加项目失败',
   }
 };
 

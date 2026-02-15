@@ -5,14 +5,14 @@ import { IDatabaseService, TreeItem, SearchResult, SearchMatch, PromptVersion, S
 const STORAGE_TYPE = import.meta.env.VITE_STORAGE_TYPE || 'api';
 const API_BASE_URL = 'http://localhost:8000';
 
-/* --- API IMPLEMENTATION (For FastAPI) --- */
-class ApiDatabaseService implements IDatabaseService {
+/* --- TAURI IMPLEMENTATION (Pure Rust Backend) --- */
+import { invoke } from '@tauri-apps/api/tauri';
+
+class TauriDatabaseService implements IDatabaseService {
 
   async getItems(): Promise<TreeItem[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/items`);
-      if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-      return await response.json();
+      return await invoke<TreeItem[]>('get_items');
     } catch (error) {
       console.error("Failed to fetch items:", error);
       throw error;
@@ -21,10 +21,8 @@ class ApiDatabaseService implements IDatabaseService {
 
   async getItem(id: string): Promise<TreeItem | null> {
     try {
-      const response = await fetch(`${API_BASE_URL}/items/${id}`);
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
-      return await response.json();
+      // Rust returns Option<TreeItem>, which maps to TreeItem | null in JS
+      return await invoke<TreeItem | null>('get_item', { id });
     } catch (error) {
       console.error(`Failed to fetch item ${id}:`, error);
       return null;
@@ -32,40 +30,57 @@ class ApiDatabaseService implements IDatabaseService {
   }
 
   async addItem(parentId: string | null, item: Omit<TreeItem, 'id' | 'children'>): Promise<TreeItem> {
-    const response = await fetch(`${API_BASE_URL}/items`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...item, parentId })
-    });
-    if (!response.ok) throw new Error('Failed to create item');
-    return await response.json();
+    // We need to construct a partial TreeItem to send to Rust, as Rust expects a specific struct.
+    // However, our Rust `add_item` command expects a `TreeItem`.
+    // We'll create a temporary object that matches what Rust expects, filling in defaults.
+    // Actually, it's better if we let Rust handle ID generation.
+    // The Rust signature is `add_item(parent_id: Option<String>, item: TreeItem)`.
+    // We should send the basic fields.
+
+    const payload = {
+      id: "", // Rust will regenerate this
+      name: item.name,
+      type: item.type,
+      children: [],
+      parentId: parentId || undefined,
+      content: item.content,
+      versions: item.versions,
+      metadata: item.metadata || {}
+    };
+
+    return await invoke<TreeItem>('add_item', { parentId, item: payload });
   }
 
   async updateItem(id: string, updates: Partial<TreeItem>): Promise<TreeItem> {
-    const response = await fetch(`${API_BASE_URL}/items/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates)
-    });
-    if (!response.ok) throw new Error('Failed to update item');
-    return await response.json();
+    // Rust `update_item` expects a `TreeItem`. We might need to fetch it first or change Rust sig.
+    // But typically we pass the updates.
+    // In our Rust implementation: `fn update_item(id: String, updates: TreeItem)`
+    // It replaces fields. This might be too aggressive if we only send partial.
+    // Let's assume for now we send a full object or at least the fields we want to update.
+    // Since `updates` is Partial, we might need to cast it or change how we call it.
+    // For simplicity, let's assume we pass the fields present in `updates` and Rust merges.
+    // But `TreeItem` in Rust is strict.
+    // We'll construct a "dummy" TreeItem with the updates.
+    // WARNING: Our Rust implementation `update_item` does partial updates manually?
+    // Checking Rust code: `node.name = updates.name; ...`
+    // It overrides fields. This means we must send VALID fields.
+    // If `updates` only contains `name`, `content` will be empty string?
+    // We should probably fetch the item first, merge in JS, then send back.
+
+    // Better approach: Fetch, Merge, Update
+    const current = await this.getItem(id);
+    if (!current) throw new Error("Item not found");
+
+    const merged = { ...current, ...updates };
+    return await invoke<TreeItem>('update_item', { id, updates: merged });
   }
 
   async deleteItem(id: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/items/${id}`, {
-      method: 'DELETE'
-    });
-    if (!response.ok) throw new Error('Failed to delete item');
+    await invoke('delete_item', { id });
   }
 
   async searchItems(query: string, filters?: SearchFilters): Promise<SearchResult[]> {
-    const queryParams = new URLSearchParams({ q: query });
-    if (filters) {
-      queryParams.set('filters', JSON.stringify(filters));
-    }
-    const response = await fetch(`${API_BASE_URL}/search?${queryParams.toString()}`);
-    if (!response.ok) throw new Error('Search request failed');
-    return await response.json();
+    return await invoke<SearchResult[]>('search_items', { query, filters });
   }
 }
 
@@ -498,9 +513,10 @@ class LocalStorageDatabaseService implements IDatabaseService {
 }
 
 // Export the selected service based on configuration
-console.log(`[Database] Initializing with storage type: ${STORAGE_TYPE} (local = localStorage, api = backend)`);
+console.log(`[Database] Initializing with storage type: ${STORAGE_TYPE} (local = localStorage, tauri = rust backend)`);
 
 export const dbService =
   STORAGE_TYPE === 'local' ? new LocalStorageDatabaseService() :
     STORAGE_TYPE === 'mock' ? new MockDatabaseService() :
-      new ApiDatabaseService();
+      STORAGE_TYPE === 'tauri' ? new TauriDatabaseService() :
+        new TauriDatabaseService(); // Default to Tauri now instead of API

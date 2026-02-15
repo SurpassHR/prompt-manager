@@ -4,8 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "dev:frontend": "vite",
+    "build": "tauri build",
+    "build:frontend": "vite build",
     "build:gh": "tsc && vite build --mode github",
     "preview": "vite preview",
     "predeploy": "npm run build:gh",
@@ -13,6 +16,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
+    "@tauri-apps/api": "^1.6.0",
     "lucide-react": "^0.564.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -20,6 +24,8 @@
     "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "@tauri-apps/cli": "^1.6.0",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.8",
