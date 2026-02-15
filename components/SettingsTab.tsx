@@ -10,7 +10,7 @@ interface SettingsTabProps {
 
 const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings }) => {
   const lang = settings.language;
-  
+
   const fonts = [
     { name: 'Monospace (System Default)', value: "'Menlo', 'Monaco', 'Courier New', monospace" },
     { name: 'Fira Code', value: "'Fira Code', monospace" },
@@ -28,7 +28,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings })
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search size={16} className="text-[var(--text-secondary)]" />
           </div>
-          <input 
+          <input
             type="text"
             placeholder={t('settings.searchPlaceholder', lang)}
             className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-sm rounded-md py-2 pl-10 pr-4 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -36,11 +36,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings })
         </div>
 
         <div className="space-y-12">
-          
+
           {/* Appearance Section */}
           <section>
             <h2 className="text-xl font-normal mb-6 pb-2 border-b border-[var(--border-color)]">{t('settings.commonlyUsed', lang)}</h2>
-            
+
             <div className="space-y-8">
               {/* Language */}
               <div className="flex flex-col gap-2">
@@ -48,9 +48,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings })
                   <label className="font-medium text-base flex items-center gap-2"><Globe size={16} /> {t('settings.language', lang)}</label>
                 </div>
                 <p className="text-sm text-[var(--text-secondary)] mb-2">{t('settings.languageDesc', lang)}</p>
-                
+
                 <div className="max-w-md">
-                   <select
+                  <select
                     value={settings.language}
                     onChange={(e) => onUpdateSettings({ ...settings, language: e.target.value as any })}
                     className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
@@ -67,29 +67,40 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings })
                   <label className="font-medium text-base">{t('settings.colorTheme', lang)}</label>
                 </div>
                 <p className="text-sm text-[var(--text-secondary)] mb-2">{t('settings.colorThemeDesc', lang)}</p>
-                
+
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => onUpdateSettings({ ...settings, theme: 'dark' })}
                     className={`
                       flex items-center gap-2 px-4 py-2 rounded border text-sm transition-all
-                      ${settings.theme === 'dark' 
-                        ? 'bg-blue-600/10 border-blue-600 text-blue-500' 
+                      ${settings.theme === 'dark'
+                        ? 'bg-blue-600/10 border-blue-600 text-blue-500'
                         : 'bg-[var(--input-bg)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--item-hover)]'}
                     `}
                   >
-                    <Moon size={14} /> {t('settings.dark', lang)}
+                    <Moon size={14} /> {t('settings.theme.dark', lang)}
                   </button>
                   <button
                     onClick={() => onUpdateSettings({ ...settings, theme: 'light' })}
                     className={`
                       flex items-center gap-2 px-4 py-2 rounded border text-sm transition-all
-                      ${settings.theme === 'light' 
-                        ? 'bg-blue-600/10 border-blue-600 text-blue-500' 
+                      ${settings.theme === 'light'
+                        ? 'bg-blue-600/10 border-blue-600 text-blue-500'
                         : 'bg-[var(--input-bg)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--item-hover)]'}
                     `}
                   >
-                    <Sun size={14} /> {t('settings.light', lang)}
+                    <Sun size={14} /> {t('settings.theme.light', lang)}
+                  </button>
+                  <button
+                    onClick={() => onUpdateSettings({ ...settings, theme: 'system' })}
+                    className={`
+                      flex items-center gap-2 px-4 py-2 rounded border text-sm transition-all
+                      ${settings.theme === 'system'
+                        ? 'bg-blue-600/10 border-blue-600 text-blue-500'
+                        : 'bg-[var(--input-bg)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--item-hover)]'}
+                    `}
+                  >
+                    <Laptop size={14} /> {t('settings.theme.system', lang)}
                   </button>
                 </div>
               </div>
@@ -113,7 +124,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings })
                 <label className="font-medium text-base">{t('settings.editorFontFamily', lang)}</label>
                 <p className="text-sm text-[var(--text-secondary)] mb-1">{t('settings.editorFontFamilyDesc', lang)}</p>
                 <div className="max-w-md">
-                   <select
+                  <select
                     value={settings.editorFontFamily}
                     onChange={(e) => onUpdateSettings({ ...settings, editorFontFamily: e.target.value })}
                     className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
@@ -131,8 +142,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings })
           <section>
             <h2 className="text-xl font-normal mb-6 pb-2 border-b border-[var(--border-color)]">{t('settings.about', lang)}</h2>
             <div className="text-sm text-[var(--text-secondary)] space-y-2">
-                <p>{t('settings.version', lang)}</p>
-                <p>{t('settings.desc', lang)}</p>
+              <p>{t('settings.version', lang)}</p>
+              <p>{t('settings.desc', lang)}</p>
             </div>
           </section>
 

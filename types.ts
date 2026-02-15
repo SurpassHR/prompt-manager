@@ -89,7 +89,7 @@ export interface IDatabaseService {
 
 export type ViewMode = 'prompts' | 'search' | 'extensions' | 'settings' | 'none';
 
-export type Theme = 'dark' | 'light';
+export type Theme = 'dark' | 'light' | 'system';
 export type Language = 'en' | 'zh';
 
 export interface AppSettings {
