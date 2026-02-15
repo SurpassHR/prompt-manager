@@ -1,0 +1,5 @@
+{
+  "name": "PromptArchitect",
+  "description": "A VS Code-inspired prompt manager for various AI models with a hierarchical tree view.",
+  "requestFramePermissions": []
+}
