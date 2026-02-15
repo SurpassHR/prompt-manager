@@ -498,6 +498,8 @@ class LocalStorageDatabaseService implements IDatabaseService {
 }
 
 // Export the selected service based on configuration
+console.log(`[Database] Initializing with storage type: ${STORAGE_TYPE} (local = localStorage, api = backend)`);
+
 export const dbService =
   STORAGE_TYPE === 'local' ? new LocalStorageDatabaseService() :
     STORAGE_TYPE === 'mock' ? new MockDatabaseService() :
