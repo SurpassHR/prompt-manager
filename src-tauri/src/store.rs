@@ -105,18 +105,22 @@ impl Store {
         let mut data = self.data.lock().map_err(|e| e.to_string())?;
 
         if let Some(node) = Self::find_node_mut_recursive(&mut data, &id) {
-            // Apply updates (simplistic merge)
+            // 应用更新（简单合并）
             node.name = updates.name;
             node.content = updates.content;
             node.versions = updates.versions;
 
-            // Merge metadata
+            // 合并 metadata
             node.metadata.description = updates.metadata.description.or(node.metadata.description.clone());
             node.metadata.tags = updates.metadata.tags.or(node.metadata.tags.clone());
             node.metadata.last_modified = Some(chrono::Utc::now().timestamp_millis());
+            // 模型配置字段合并
+            node.metadata.provider = updates.metadata.provider.or(node.metadata.provider.clone());
+            node.metadata.model_name = updates.metadata.model_name.or(node.metadata.model_name.clone());
+            node.metadata.base_url = updates.metadata.base_url.or(node.metadata.base_url.clone());
+            node.metadata.api_key = updates.metadata.api_key.or(node.metadata.api_key.clone());
 
             let updated_node = node.clone();
-             // Release lock to save
             drop(data);
             self.save()?;
 
@@ -175,8 +179,27 @@ impl Store {
                 true
             };
 
-            // 2. Date Filter (Simplified)
-            let date_match = true; // Implement date logic if needed matching JS version
+            // 2. 日期过滤
+            let date_match = if let Some(f) = filters {
+                if let Some(date) = &f.date {
+                    if let Some(last_mod) = node.metadata.last_modified {
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let one_day = 86_400_000i64;
+                        match date.as_str() {
+                            "today" => now - last_mod <= one_day,
+                            "week" => now - last_mod <= one_day * 7,
+                            "month" => now - last_mod <= one_day * 30,
+                            _ => true, // "any"
+                        }
+                    } else {
+                        true // 无 lastModified 的项不被日期过滤排除
+                    }
+                } else {
+                    true
+                }
+            } else {
+                true
+            };
 
             if type_match && date_match {
                 // Name match

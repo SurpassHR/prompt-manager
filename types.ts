@@ -1,5 +1,5 @@
 
-export type ItemType = 'provider' | 'model' | 'version' | 'prompt' | 'settings';
+export type ItemType = 'prompt' | 'folder' | 'settings';
 
 export interface PromptVersion {
   id: string;
@@ -8,40 +8,37 @@ export interface PromptVersion {
   label?: string;
 }
 
+export interface ItemMetadata {
+  description?: string;
+  tags?: string[];
+  lastModified?: number;
+  // 模型配置（仅 prompt 类型使用）
+  provider?: string;     // e.g. "OpenAI", "Google", "Anthropic"
+  modelName?: string;    // e.g. "gpt-4", "gemini-1.5-pro"
+  baseUrl?: string;      // API base URL
+  apiKey?: string;       // API Key
+}
+
 export interface TreeItem {
   id: string;
   name: string;
   type: ItemType;
-  children?: TreeItem[];
+  children?: TreeItem[];  // 仅 folder 类型使用
   parentId?: string;
-  content?: string; // The actual prompt text
-  versions?: PromptVersion[]; // History of the prompt
-  // Metadata for prompts or models
-  metadata?: {
-    description?: string;
-    tags?: string[];
-    lastModified?: number; // Changed to number (timestamp) for easier filtering
-  };
+  content?: string; // 提示词正文
+  versions?: PromptVersion[];
+  metadata?: ItemMetadata;
 }
 
 export interface EditorTab {
   id: string;
   name: string;
   type: ItemType;
-  content: string; // Current editor content
-  initialContent: string; // Content from DB (to check dirty state accurately)
+  content: string;
+  initialContent: string;
   versions?: PromptVersion[];
-  // Metadata tracking
-  metadata?: {
-    description?: string;
-    tags?: string[];
-    lastModified?: number;
-  };
-  initialMetadata?: {
-    description?: string;
-    tags?: string[];
-    lastModified?: number;
-  };
+  metadata?: ItemMetadata;
+  initialMetadata?: ItemMetadata;
   isDirty: boolean;
   isLoading: boolean;
   scrollPosition?: { lineNumber: number; column: number };
@@ -62,7 +59,7 @@ export interface SearchResult {
   lastModified?: number;
 }
 
-// Passed to editor to trigger scroll & highlight
+// 传给编辑器触发滚动和高亮
 export interface EditorHighlight {
   promptId: string;
   lineNumber: number;
@@ -77,7 +74,7 @@ export interface SearchFilters {
   date: DateFilter;
 }
 
-// The generic Database Interface (The "GRUB" / CRUD interface)
+// 数据库服务接口
 export interface IDatabaseService {
   getItems(): Promise<TreeItem[]>;
   getItem(id: string): Promise<TreeItem | null>;

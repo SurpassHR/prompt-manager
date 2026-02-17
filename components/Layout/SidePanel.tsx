@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MoreHorizontal, Plus, ChevronRight, ChevronDown, RefreshCw, Trash2, ListCollapse, Edit2, Search as SearchIcon, Filter, X } from 'lucide-react';
+import { MoreHorizontal, Plus, ChevronRight, ChevronDown, RefreshCw, Trash2, ListCollapse, Edit2, Search as SearchIcon, Filter, X, FolderPlus, FilePlus } from 'lucide-react';
 import { TreeItem, ViewMode, SearchResult, EditorHighlight, ItemType, Language, SearchFilters, DateFilter } from '../../types';
 import { dbService } from '../../services/dbService';
 import { getIconForName } from '../../utils/iconHelper';
@@ -28,7 +28,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Search State
+  // 搜索状态
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -38,17 +38,17 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     date: 'any'
   });
 
-  // Creation Input State
+  // 创建输入状态
   const [showInput, setShowInput] = useState(false);
   const [inputParentId, setInputParentId] = useState<string | null>(null);
-  const [inputType, setInputType] = useState<'provider' | 'model' | 'version' | 'prompt' | null>(null);
+  const [inputType, setInputType] = useState<'prompt' | 'folder' | null>(null);
   const [inputName, setInputName] = useState('');
 
-  // Renaming State
+  // 重命名状态
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
 
-  // Context Menu State
+  // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, item: null });
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -61,12 +61,11 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
   }, [activeView]);
 
   useEffect(() => {
-    // Focus logic
     if (showInput && inputRef.current) inputRef.current.focus();
     if (renamingId && renameInputRef.current) renameInputRef.current.focus();
   }, [showInput, renamingId]);
 
-  // Close context menu on global click
+  // 全局点击关闭右键菜单
   useEffect(() => {
     const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, item: null });
     window.addEventListener('click', handleClick);
@@ -138,9 +137,9 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     setExpandedIds(newExpanded);
   };
 
-  /* --- CRUD OPERATIONS --- */
+  /* --- CRUD 操作 --- */
 
-  const initiateAdd = (parentId: string | null, type: 'provider' | 'model' | 'version' | 'prompt') => {
+  const initiateAdd = (parentId: string | null, type: 'prompt' | 'folder') => {
     if (parentId) {
       const newExpanded = new Set(expandedIds);
       newExpanded.add(parentId);
@@ -154,7 +153,6 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     setRenamingId(null);
   };
 
-  // ... (inside confirmAdd)
   const confirmAdd = async () => {
     if (!inputName.trim() || !inputType) {
       setShowInput(false);
@@ -162,7 +160,6 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     }
 
     try {
-      // Use background refresh to prevent flickering
       const newItem = await dbService.addItem(inputParentId, { name: inputName, type: inputType, content: '' });
       await loadItems(true);
 
@@ -175,6 +172,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
 
       addToast(t('toast.itemAdded', language).replace('{type}', t(`search.type.${inputType}` as any, language)).replace('{name}', inputName), 'success');
 
+      // 创建 prompt 后自动打开编辑
       if (inputType === 'prompt') {
         setSelectedId(newItem.id);
         onSelectPrompt(newItem.id, newItem.name, newItem.type);
@@ -197,7 +195,6 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
       return;
     }
     try {
-      // Use background refresh
       await dbService.updateItem(renamingId, { name: renameName });
       await loadItems(true);
       setRenamingId(null);
@@ -210,12 +207,9 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
   const handleDelete = async (id: string) => {
     if (confirm(t('sidepanel.deleteConfirm', language))) {
       await dbService.deleteItem(id);
-      // Use background refresh
       await loadItems(true);
       if (selectedId === id) {
         setSelectedId(null);
-        // We can't easily clear the editor from here in the new tab model,
-        // but App will handle if the active tab is deleted eventually (out of scope for now)
       }
     }
   };
@@ -246,7 +240,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     }
   };
 
-  /* --- RENDERING --- */
+  /* --- 渲染 --- */
 
   const renderInputRow = (level: number) => {
     const paddingLeft = `${level * 12 + 12}px`;
@@ -284,7 +278,8 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     return nodes.map(node => {
       const isExpanded = expandedIds.has(node.id);
       const isSelected = selectedId === node.id;
-      const isLeaf = node.type === 'prompt';
+      const isFolder = node.type === 'folder';
+      const isPrompt = node.type === 'prompt';
       const isRenaming = renamingId === node.id;
 
       const paddingLeft = `${level * 12 + 12}px`;
@@ -300,34 +295,36 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
             onClick={() => {
               if (isRenaming) return;
               setSelectedId(node.id);
-              if (!isLeaf) toggleExpand(node.id);
-              else onSelectPrompt(node.id, node.name, node.type);
+              if (isFolder) toggleExpand(node.id);
+              else if (isPrompt) onSelectPrompt(node.id, node.name, node.type);
             }}
             onContextMenu={(e) => handleContextMenu(e, node)}
             title={node.metadata?.description || ''}
           >
-            <div className={`w-5 flex items-center justify-center mr-0.5 ${isLeaf ? 'opacity-0' : ''}`}>
+            {/* 折叠箭头：只有 folder 显示 */}
+            <div className={`w-5 flex items-center justify-center mr-0.5 ${!isFolder ? 'opacity-0' : ''}`}>
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </div>
 
             <div className="mr-2 shrink-0 opacity-80">
-              {getIconForName(node.name, node.type)}
+              {getIconForName(node.name, node.type, 16, node.metadata)}
             </div>
 
             {isRenaming ? renderRenameInput(node) : (
               <span className="flex-1 truncate text-[13px]">{node.name}</span>
             )}
 
-            {!isRenaming && (
+            {/* hover 按钮：folder 显示添加子项按钮 */}
+            {!isRenaming && isFolder && (
               <div className="hidden group-hover:flex items-center space-x-1 ml-2 opacity-60">
-                {node.type === 'provider' && <Plus size={13} className="hover:text-[var(--text-primary)]" onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'model'); }} />}
-                {node.type === 'model' && <Plus size={13} className="hover:text-[var(--text-primary)]" onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'version'); }} />}
-                {node.type === 'version' && <Plus size={13} className="hover:text-[var(--text-primary)]" onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'prompt'); }} />}
+                <FilePlus size={13} className="hover:text-[var(--text-primary)]" onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'prompt'); }} title={t('sidepanel.newPrompt', language)} />
+                <FolderPlus size={13} className="hover:text-[var(--text-primary)]" onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'folder'); }} title={t('sidepanel.newFolder', language)} />
               </div>
             )}
           </div>
 
-          {isExpanded && (
+          {/* 展开子项 */}
+          {isFolder && isExpanded && (
             <>
               {node.children && renderTree(node.children, level + 1)}
               {showInput && inputParentId === node.id && renderInputRow(level + 1)}
@@ -345,7 +342,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
       style={{ width: width }}
       className="h-full bg-[var(--bg-panel)] flex flex-col rounded-2xl border border-[var(--border-color)] shadow-sm relative overflow-hidden flex-shrink-0"
     >
-      {/* Header */}
+      {/* 头部 */}
       <div className="h-12 px-4 flex items-center justify-between">
         <span className="text-xs font-bold tracking-wider text-[var(--text-secondary)] uppercase">{activeView === 'prompts' ? t('sidepanel.explorer', language) : activeView}</span>
         {activeView === 'prompts' && (
@@ -353,8 +350,11 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
             <button className="hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] p-1.5 rounded-md transition-colors" onClick={collapseAll} title={t('sidepanel.collapse', language)}>
               <ListCollapse size={16} />
             </button>
-            <button className="hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] p-1.5 rounded-md transition-colors" onClick={() => initiateAdd(null, 'provider')} title={t('sidepanel.addProvider', language)}>
-              <Plus size={16} />
+            <button className="hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] p-1.5 rounded-md transition-colors" onClick={() => initiateAdd(null, 'prompt')} title={t('sidepanel.addPrompt', language)}>
+              <FilePlus size={16} />
+            </button>
+            <button className="hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] p-1.5 rounded-md transition-colors" onClick={() => initiateAdd(null, 'folder')} title={t('sidepanel.addFolder', language)}>
+              <FolderPlus size={16} />
             </button>
             <button className="hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] p-1.5 rounded-md transition-colors" onClick={() => loadItems(false)} title={t('sidepanel.refresh', language)}>
               <RefreshCw size={14} />
@@ -382,7 +382,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
             {items.length === 0 && !loading && !showInput && (
               <div className="p-8 text-xs text-center text-zinc-600 italic">
                 <p className="mb-2">{t('sidepanel.empty', language)}</p>
-                <button onClick={() => initiateAdd(null, 'provider')} className="text-blue-500 hover:underline">{t('sidepanel.createProvider', language)}</button>
+                <button onClick={() => initiateAdd(null, 'prompt')} className="text-blue-500 hover:underline">{t('sidepanel.createPrompt', language)}</button>
               </div>
             )}
           </div>
@@ -415,7 +415,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
               </button>
             </div>
 
-            {/* Filter Panel */}
+            {/* 筛选面板 */}
             {isFilterOpen && (
               <div className="mt-2 p-3 bg-[var(--bg-app)] rounded-lg border border-[var(--border-color)] text-xs animate-in slide-in-from-top-2 duration-150">
                 <div className="mb-3">
@@ -424,7 +424,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
                     {filters.types.length > 0 && <span onClick={() => setFilters({ ...filters, types: [] })} className="text-[10px] text-blue-500 cursor-pointer hover:underline">{t('search.type.all', language)}</span>}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {(['provider', 'model', 'version', 'prompt'] as ItemType[]).map(type => (
+                    {(['prompt', 'folder'] as ItemType[]).map(type => (
                       <button
                         key={type}
                         onClick={() => toggleFilterType(type)}
@@ -520,23 +520,31 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
         </div>
       )}
 
-      {/* Context Menu */}
+      {/* 右键菜单 */}
       {contextMenu.visible && contextMenu.item && (
         <div
           className="fixed z-50 bg-[var(--modal-bg)] border border-[var(--border-color)] shadow-2xl rounded-lg py-1 min-w-[160px] text-[13px] text-[var(--text-primary)] backdrop-blur-sm"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
-          {['provider', 'model', 'version'].includes(contextMenu.item.type) && (
-            <div
-              className="px-3 py-2 hover:bg-blue-600 hover:text-white cursor-pointer flex items-center gap-2 transition-colors mx-1 rounded"
-              onClick={() => { initiateAdd(contextMenu.item!.id, contextMenu.item!.type === 'provider' ? 'model' : contextMenu.item!.type === 'model' ? 'version' : 'prompt'); setContextMenu(prev => ({ ...prev, visible: false })); }}
-            >
-              <Plus size={14} /> {t('sidepanel.new', language)} {contextMenu.item.type === 'provider' ? 'Model' : contextMenu.item.type === 'model' ? 'Version' : 'Prompt'}
-            </div>
+          {/* folder 才显示添加子项 */}
+          {contextMenu.item.type === 'folder' && (
+            <>
+              <div
+                className="px-3 py-2 hover:bg-blue-600 hover:text-white cursor-pointer flex items-center gap-2 transition-colors mx-1 rounded"
+                onClick={() => { initiateAdd(contextMenu.item!.id, 'prompt'); setContextMenu(prev => ({ ...prev, visible: false })); }}
+              >
+                <FilePlus size={14} /> {t('sidepanel.newPrompt', language)}
+              </div>
+              <div
+                className="px-3 py-2 hover:bg-blue-600 hover:text-white cursor-pointer flex items-center gap-2 transition-colors mx-1 rounded"
+                onClick={() => { initiateAdd(contextMenu.item!.id, 'folder'); setContextMenu(prev => ({ ...prev, visible: false })); }}
+              >
+                <FolderPlus size={14} /> {t('sidepanel.newFolder', language)}
+              </div>
+              <div className="h-[1px] bg-[var(--border-color)] my-1 mx-2" />
+            </>
           )}
-
-          <div className="h-[1px] bg-[var(--border-color)] my-1 mx-2" />
 
           <div
             className="px-3 py-2 hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] cursor-pointer flex items-center gap-2 transition-colors mx-1 rounded"

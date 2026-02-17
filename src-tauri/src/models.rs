@@ -3,10 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum ItemType {
-    Provider,
-    Model,
-    Version,
     Prompt,
+    Folder,
     Settings,
 }
 
@@ -25,6 +23,11 @@ pub struct ItemMetadata {
     pub description: Option<String>,
     pub tags: Option<Vec<String>>,
     pub last_modified: Option<i64>,
+    // 模型配置（仅 prompt 类型使用）
+    pub provider: Option<String>,
+    pub model_name: Option<String>,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Command, Save, Eye, Edit3, CheckCircle2, X, Circle, History, GitCompare, RotateCcw, Plus, Clock, Info } from 'lucide-react';
-import { dbService } from '../../services/dbService';
-import { TreeItem, EditorHighlight, EditorTab, AppSettings, PromptVersion } from '../../types';
-import { getIconForName } from '../../utils/iconHelper';
-import { t } from '../../utils/i18n';
-import Editor, { useMonaco, DiffEditor } from '@monaco-editor/react';
+import Editor, { OnMount } from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import SettingsTab from '../SettingsTab';
+import { X, Save, Clock, Info, History, ArrowDownToLine, GitCompareArrows, Code2, Eye } from 'lucide-react';
+import { EditorTab, PromptVersion, EditorHighlight, AppSettings, Language, ItemMetadata } from '../../types';
+import { dbService } from '../../services/dbService';
+import { getIconForName } from '../../utils/iconHelper';
+import { t } from '../../utils/i18n';
 
 interface MainContentProps {
     tabs: EditorTab[];
@@ -16,149 +15,87 @@ interface MainContentProps {
     onCloseTab: (id: string) => void;
     onUpdateTab: (id: string, updates: Partial<EditorTab>) => void;
     onSave: (id: string) => void;
-    highlight?: EditorHighlight | null;
+    highlight: EditorHighlight | null;
     settings: AppSettings;
-    onUpdateSettings: (newSettings: AppSettings) => void;
-    theme: 'light' | 'vs-dark'; // Add theme prop
+    onUpdateSettings: (settings: AppSettings) => void;
+    theme: string;
 }
 
+type MainView = 'code' | 'preview' | 'history' | 'info';
+
 const MainContent: React.FC<MainContentProps> = ({
-    tabs,
-    activeTabId,
-    onSwitchTab,
-    onCloseTab,
-    onUpdateTab,
-    onSave,
-    highlight,
-    settings,
-    onUpdateSettings,
-    theme // Destructure theme
+    tabs, activeTabId, onSwitchTab, onCloseTab, onUpdateTab, onSave,
+    highlight, settings, onUpdateSettings, theme
 }) => {
-    const [isPreview, setIsPreview] = useState(false);
-    const [showHistory, setShowHistory] = useState(false);
-    const [showDetails, setShowDetails] = useState(false);
-    const [diffVersion, setDiffVersion] = useState<PromptVersion | null>(null);
+    const editorRef = useRef<any>(null);
+    const [currentView, setCurrentView] = useState<MainView>('code');
 
-    // New Version Input
+    // 版本历史状态
+    const [newVersionLabel, setNewVersionLabel] = useState('');
     const [showVersionInput, setShowVersionInput] = useState(false);
-    const [versionLabel, setVersionLabel] = useState('');
 
-    const activeTab = tabs.find(t => t.id === activeTabId);
+    // Diff 对比
+    const [diffVersionId, setDiffVersionId] = useState<string | null>(null);
+
     const lang = settings.language;
 
-    const monaco = useMonaco();
-    const editorRef = useRef<any>(null);
-    const decorationsCollection = useRef<any>(null);
-    const scrollPositions = useRef<Map<string, { scrollTop: number, scrollLeft: number }>>(new Map());
+    const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-    // Monaco Config
+    // 加载 tab 数据
     useEffect(() => {
-        if (monaco) {
-            const jsonContrib = monaco.languages.json as any;
-            if (jsonContrib?.jsonDefaults) {
-                jsonContrib.jsonDefaults.setDiagnosticsOptions({ validate: true });
-            }
-        }
-    }, [monaco]);
-
-    // Handle Loading Data for New Tabs
-    useEffect(() => {
-        if (activeTab && activeTab.isLoading && activeTab.type !== 'settings') {
-            const loadData = async () => {
-                try {
-                    const item = await dbService.getItem(activeTab.id);
-                    const content = item?.content || '';
-                    const versions = item?.versions || [];
-                    // Update tab with loaded content and clear loading state
+        const fetchContent = async () => {
+            if (activeTab && activeTab.isLoading && activeTab.type === 'prompt') {
+                const item = await dbService.getItem(activeTab.id);
+                if (item) {
                     onUpdateTab(activeTab.id, {
-                        content,
-                        initialContent: content,
-                        versions,
-                        metadata: item?.metadata || {},
-                        initialMetadata: item?.metadata ? JSON.parse(JSON.stringify(item.metadata)) : {},
-                        isLoading: false
+                        content: item.content || '',
+                        initialContent: item.content || '',
+                        versions: item.versions,
+                        metadata: item.metadata ? { ...item.metadata } : {},
+                        initialMetadata: item.metadata ? { ...item.metadata } : {},
+                        isLoading: false,
                     });
-                } catch (e) {
-                    console.error("Failed to load prompt content", e);
-                    onUpdateTab(activeTab.id, {
-                        content: '',
-                        initialContent: '',
-                        versions: [],
-                        metadata: {},
-                        initialMetadata: {},
-                        isLoading: false
-                    });
-                }
-            };
-            loadData();
-        }
-    }, [activeTab?.id, activeTab?.isLoading, activeTab?.type]);
-
-    // Save Scroll Position on Tab Switch (Cleanup of previous tab)
-    useEffect(() => {
-        return () => {
-            if (activeTabId && editorRef.current && activeTab?.type !== 'settings') {
-                try {
-                    const scrollTop = editorRef.current.getScrollTop();
-                    const scrollLeft = editorRef.current.getScrollLeft();
-                    scrollPositions.current.set(activeTabId, { scrollTop, scrollLeft });
-                } catch (e) {
-                    console.warn("Failed to save scroll position", e);
+                } else {
+                    onUpdateTab(activeTab.id, { isLoading: false, content: '', initialContent: '' });
                 }
             }
         };
-    }, [activeTabId, activeTab?.type]);
+        fetchContent();
+    }, [activeTabId, activeTab?.isLoading]);
 
-    // Reset UI state when switching tabs
+    // 高亮跳转
     useEffect(() => {
-        setShowHistory(false);
-        setShowDetails(false);
-        setDiffVersion(null);
-        setShowVersionInput(false);
-    }, [activeTabId]);
-
-    // Restore Scroll & Highlights logic encapsulated to run when editor is ready
-    const handleEditorDidMount = (editor: any) => {
-        editorRef.current = editor;
-
-        // 1. Restore Scroll
-        if (activeTabId) {
-            const savedPos = scrollPositions.current.get(activeTabId);
-            if (savedPos) {
-                editor.setScrollPosition(savedPos);
-            }
-        }
-
-        // 2. Initial Highlight if present
-        updateHighlights(editor);
-    };
-
-    // Update highlights when prop changes, or active tab changes (though re-mount handles that mostly)
-    useEffect(() => {
-        if (editorRef.current && activeTabId) {
-            updateHighlights(editorRef.current);
+        if (highlight && editorRef.current && activeTab?.id === highlight.promptId) {
+            const editor = editorRef.current;
+            setTimeout(() => {
+                editor.revealLineInCenter(highlight.lineNumber);
+                editor.setSelection({
+                    startLineNumber: highlight.lineNumber,
+                    startColumn: highlight.startColumn,
+                    endLineNumber: highlight.lineNumber,
+                    endColumn: highlight.endColumn,
+                });
+                editor.focus();
+            }, 100);
         }
     }, [highlight, activeTabId]);
 
-    const updateHighlights = (editor: any) => {
-        if (!editor) return;
+    // Ctrl+S 快捷键
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                if (activeTabId && activeTab?.type === 'prompt') {
+                    onSave(activeTabId);
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [activeTabId, activeTab]);
 
-        // Clear existing
-        if (decorationsCollection.current) {
-            decorationsCollection.current.clear();
-            decorationsCollection.current = null;
-        }
-
-        if (highlight && highlight.promptId === activeTabId) {
-            const { lineNumber, startColumn, endColumn } = highlight;
-            editor.revealRangeInCenter({ startLineNumber: lineNumber, startColumn, endLineNumber: lineNumber, endColumn });
-
-            const newDecorations = [{
-                range: new monaco.Range(lineNumber, startColumn, lineNumber, endColumn),
-                options: { isWholeLine: false, className: 'findMatch', overviewRuler: { color: 'rgba(234, 179, 8, 0.8)', position: 1 } }
-            }];
-            decorationsCollection.current = editor.createDecorationsCollection(newDecorations);
-        }
+    const handleEditorMount: OnMount = (editor) => {
+        editorRef.current = editor;
     };
 
     const handleEditorChange = (value: string | undefined) => {
@@ -167,367 +104,450 @@ const MainContent: React.FC<MainContentProps> = ({
         }
     };
 
-    const handleMetadataChange = (key: string, value: any) => {
-        if (activeTab) {
-            const newMetadata = { ...(activeTab.metadata || {}), [key]: value };
-            onUpdateTab(activeTab.id, { metadata: newMetadata });
-        }
+    // 更新 metadata 字段
+    const handleMetadataChange = (field: keyof ItemMetadata, value: string) => {
+        if (!activeTabId || !activeTab) return;
+        const updatedMetadata = { ...activeTab.metadata, [field]: value };
+        onUpdateTab(activeTabId, { metadata: updatedMetadata });
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        // Simple Save Shortcut (Ctrl/Cmd + S)
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-            e.preventDefault();
-            if (activeTabId && activeTab?.type !== 'settings') onSave(activeTabId);
-        }
-    };
-
-    // Version Management
-    const handleCreateVersion = async () => {
-        if (!activeTab) return;
-
+    // 保存版本
+    const handleSaveVersion = () => {
+        if (!activeTab || !activeTabId) return;
         const newVersion: PromptVersion = {
-            id: Date.now().toString(),
+            id: Math.random().toString(36).substr(2, 9),
             timestamp: Date.now(),
             content: activeTab.content,
-            label: versionLabel.trim() || `v${(activeTab.versions?.length || 0) + 1}`
+            label: newVersionLabel || undefined,
         };
-
-        const updatedVersions = [newVersion, ...(activeTab.versions || [])];
-
-        try {
-            // Persist
-            await dbService.updateItem(activeTab.id, { versions: updatedVersions });
-            // Update Local
-            onUpdateTab(activeTab.id, { versions: updatedVersions });
-            setVersionLabel('');
-            setShowVersionInput(false);
-        } catch (e) {
-            console.error("Failed to save version", e);
-            alert("Failed to save version");
-        }
+        const updated = [...(activeTab.versions || []), newVersion];
+        onUpdateTab(activeTabId, { versions: updated });
+        onSave(activeTabId);
+        setShowVersionInput(false);
+        setNewVersionLabel('');
     };
 
-    const handleRestoreVersion = async (version: PromptVersion) => {
-        if (!activeTab) return;
+    // 恢复版本
+    const handleRestoreVersion = (version: PromptVersion) => {
+        if (!activeTabId) return;
         if (confirm(t('versions.restoreConfirm', lang))) {
-            onUpdateTab(activeTab.id, { content: version.content });
-            setDiffVersion(null); // Exit diff if open
+            onUpdateTab(activeTabId, { content: version.content });
         }
     };
 
-    // Helper to determine content to render
+    // Diff 对比
+    const handleCompareVersion = (version: PromptVersion) => {
+        setDiffVersionId(version.id);
+        setCurrentView('code');
+    };
+
+    const exitDiff = () => {
+        setDiffVersionId(null);
+    };
+
+    const diffVersion = activeTab?.versions?.find(v => v.id === diffVersionId);
+
+    /* --- 渲染 --- */
+
+    const renderSettings = () => {
+        return (
+            <div className="max-w-3xl mx-auto p-8">
+                <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">{t('settings.title', lang)}</h1>
+                <p className="text-sm text-[var(--text-secondary)] mb-8 border-b border-[var(--border-color)] pb-4">{t('settings.desc', lang)}</p>
+
+                {/* 外观 */}
+                <div className="mb-6">
+                    <h2 className="text-lg font-semibold mb-4 text-[var(--text-primary)]">{t('settings.appearance', lang)}</h2>
+
+                    {/* 主题 */}
+                    <div className="mb-5">
+                        <label className="text-sm font-medium text-[var(--text-primary)]">{t('settings.colorTheme', lang)}</label>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5 mb-2">{t('settings.colorThemeDesc', lang)}</p>
+                        <select
+                            value={settings.theme}
+                            onChange={(e) => onUpdateSettings({ ...settings, theme: e.target.value as any })}
+                            className="w-64 bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-md focus:outline-none focus:border-blue-500"
+                        >
+                            <option value="dark">{t('settings.theme.dark', lang)}</option>
+                            <option value="light">{t('settings.theme.light', lang)}</option>
+                            <option value="system">{t('settings.theme.system', lang)}</option>
+                        </select>
+                    </div>
+
+                    {/* 语言 */}
+                    <div className="mb-5">
+                        <label className="text-sm font-medium text-[var(--text-primary)]">{t('settings.language', lang)}</label>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5 mb-2">{t('settings.languageDesc', lang)}</p>
+                        <select
+                            value={settings.language}
+                            onChange={(e) => onUpdateSettings({ ...settings, language: e.target.value as any })}
+                            className="w-64 bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-md focus:outline-none focus:border-blue-500"
+                        >
+                            <option value="en">English</option>
+                            <option value="zh">中文</option>
+                        </select>
+                    </div>
+
+                    {/* 字号 */}
+                    <div className="mb-5">
+                        <label className="text-sm font-medium text-[var(--text-primary)]">{t('settings.editorFontSize', lang)}</label>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5 mb-2">{t('settings.editorFontSizeDesc', lang)}</p>
+                        <input
+                            type="number"
+                            value={settings.editorFontSize}
+                            onChange={(e) => onUpdateSettings({ ...settings, editorFontSize: parseInt(e.target.value) || 14 })}
+                            className="w-24 bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-md focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+
+                    {/* 字体 */}
+                    <div className="mb-5">
+                        <label className="text-sm font-medium text-[var(--text-primary)]">{t('settings.editorFontFamily', lang)}</label>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5 mb-2">{t('settings.editorFontFamilyDesc', lang)}</p>
+                        <input
+                            type="text"
+                            value={settings.editorFontFamily}
+                            onChange={(e) => onUpdateSettings({ ...settings, editorFontFamily: e.target.value })}
+                            className="w-64 bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-md focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+                </div>
+
+                {/* 关于 */}
+                <div className="mt-8 pt-4 border-t border-[var(--border-color)]">
+                    <h2 className="text-sm font-semibold text-[var(--text-secondary)]">{t('settings.about', lang)}</h2>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">{t('settings.version', lang)}</p>
+                </div>
+            </div>
+        );
+    };
+
+    const renderVersionHistory = () => {
+        const versions = activeTab?.versions || [];
+        return (
+            <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-sm font-bold text-[var(--text-primary)]">{t('versions.title', lang)}</h2>
+                    {!showVersionInput && (
+                        <button
+                            onClick={() => setShowVersionInput(true)}
+                            className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5"
+                        >
+                            <Save size={12} /> {t('versions.create', lang)}
+                        </button>
+                    )}
+                </div>
+
+                {showVersionInput && (
+                    <div className="mb-4 p-3 bg-[var(--bg-app)] border border-[var(--border-color)] rounded-lg">
+                        <input
+                            placeholder={t('versions.labelPlaceholder', lang)}
+                            value={newVersionLabel}
+                            onChange={(e) => setNewVersionLabel(e.target.value)}
+                            className="w-full bg-[var(--input-bg)] text-sm text-[var(--text-primary)] px-3 py-2 rounded border border-[var(--border-color)] focus:outline-none focus:border-blue-500 mb-2"
+                        />
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleSaveVersion}
+                                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                            >
+                                {t('versions.save', lang)}
+                            </button>
+                            <button
+                                onClick={() => { setShowVersionInput(false); setNewVersionLabel(''); }}
+                                className="text-xs px-3 py-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded hover:bg-[var(--item-hover)] transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {versions.length === 0 ? (
+                    <p className="text-sm text-[var(--text-secondary)] italic">{t('versions.empty', lang)}</p>
+                ) : (
+                    <div className="space-y-2">
+                        {[...versions].reverse().map((v) => (
+                            <div key={v.id} className="p-3 bg-[var(--bg-app)] border border-[var(--border-color)] rounded-lg group hover:border-[var(--text-secondary)]/30 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <span className="text-xs font-semibold text-[var(--text-primary)]">
+                                            {v.label || new Date(v.timestamp).toLocaleString()}
+                                        </span>
+                                        {v.label && (
+                                            <span className="block text-[10px] text-[var(--text-secondary)]">
+                                                {new Date(v.timestamp).toLocaleString()}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleCompareVersion(v)}
+                                            className="text-[11px] px-2 py-0.5 rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1"
+                                        >
+                                            <GitCompareArrows size={11} /> {t('versions.compare', lang)}
+                                        </button>
+                                        <button
+                                            onClick={() => handleRestoreVersion(v)}
+                                            className="text-[11px] px-2 py-0.5 rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-blue-600/20 hover:text-blue-400 hover:border-blue-500/30 transition-colors flex items-center gap-1"
+                                        >
+                                            <ArrowDownToLine size={11} /> {t('versions.restore', lang)}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // 详情面板（描述 + 模型配置）
+    const renderDetailsPanel = () => {
+        const metadata = activeTab?.metadata || {};
+
+        return (
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                <h2 className="text-sm font-bold text-[var(--text-primary)]">{t('details.title', lang)}</h2>
+
+                {/* 描述 */}
+                <div>
+                    <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5">{t('details.description', lang)}</label>
+                    <textarea
+                        className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 resize-y min-h-[60px]"
+                        placeholder={t('details.placeholder', lang)}
+                        value={metadata.description || ''}
+                        onChange={(e) => handleMetadataChange('description', e.target.value)}
+                    />
+                </div>
+
+                {/* 模型配置 */}
+                <div>
+                    <label className="block text-xs font-bold text-[var(--text-secondary)] mb-3 uppercase tracking-wider">{t('details.modelConfig', lang)}</label>
+
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('details.provider', lang)}</label>
+                            <input
+                                type="text"
+                                className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                                placeholder={t('details.providerPlaceholder', lang)}
+                                value={metadata.provider || ''}
+                                onChange={(e) => handleMetadataChange('provider', e.target.value)}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('details.modelName', lang)}</label>
+                            <input
+                                type="text"
+                                className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                                placeholder={t('details.modelNamePlaceholder', lang)}
+                                value={metadata.modelName || ''}
+                                onChange={(e) => handleMetadataChange('modelName', e.target.value)}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('details.baseUrl', lang)}</label>
+                            <input
+                                type="text"
+                                className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                                placeholder={t('details.baseUrlPlaceholder', lang)}
+                                value={metadata.baseUrl || ''}
+                                onChange={(e) => handleMetadataChange('baseUrl', e.target.value)}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs text-[var(--text-secondary)] mb-1">{t('details.apiKey', lang)}</label>
+                            <input
+                                type="password"
+                                className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500"
+                                placeholder={t('details.apiKeyPlaceholder', lang)}
+                                value={metadata.apiKey || ''}
+                                onChange={(e) => handleMetadataChange('apiKey', e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderContent = () => {
-        if (!activeTab) return <div className="flex items-center justify-center h-full text-[var(--text-secondary)]">{t('main.noActiveTab', lang)}</div>;
-
-        if (activeTab.type === 'settings') {
-            return <SettingsTab settings={settings} onUpdateSettings={onUpdateSettings} />;
-        }
-
-        if (diffVersion) {
+        if (!activeTab) {
             return (
-                <DiffEditor
-                    height="100%"
-                    language="markdown"
-                    theme={theme}
-                    original={diffVersion.content}
-                    modified={activeTab.content}
-                    options={{
-                        fontSize: settings.editorFontSize,
-                        fontFamily: settings.editorFontFamily,
-                        readOnly: true,
-                        renderSideBySide: true,
-                    }}
-                />
+                <div className="flex-1 flex flex-col items-center justify-center text-[var(--text-secondary)] bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-color)]">
+                    <Code2 size={48} className="mb-4 opacity-30" />
+                    <p className="text-sm">{t('main.noActiveTab', lang)}</p>
+                    <p className="text-xs opacity-50 mt-1">{t('main.selectPrompt', lang)}</p>
+                </div>
             );
         }
 
-        if (isPreview) {
+        if (activeTab.type === 'settings') {
             return (
-                <div className="h-full w-full overflow-auto p-8 bg-[var(--bg-panel)] text-[var(--text-primary)]">
-                    <div className="markdown-preview max-w-3xl mx-auto">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {activeTab.content}
-                        </ReactMarkdown>
-                    </div>
+                <div className="flex-1 overflow-y-auto bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-color)]">
+                    {renderSettings()}
                 </div>
             );
         }
 
         if (activeTab.isLoading) {
-            return <div className="flex items-center justify-center h-full text-[var(--text-secondary)] text-sm">{t('sidepanel.loading', lang)}</div>;
+            return (
+                <div className="flex-1 flex items-center justify-center text-[var(--text-secondary)] bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-color)]">
+                    <div className="animate-pulse text-sm">Loading...</div>
+                </div>
+            );
         }
 
         return (
-            <Editor
-                key={`${activeTab.id}-${theme}-${settings.editorFontSize}-${settings.language}`}
-                height="100%"
-                defaultLanguage="markdown"
-                theme={theme}
-                value={activeTab.content}
-                onMount={handleEditorDidMount}
-                onChange={handleEditorChange}
-                options={{
-                    minimap: { enabled: false },
-                    fontSize: settings.editorFontSize,
-                    fontFamily: settings.editorFontFamily,
-                    wordWrap: 'on',
-                    scrollBeyondLastLine: false,
-                    padding: { top: 24, bottom: 24 },
-                    automaticLayout: true,
-                    renderLineHighlight: 'none',
-                    overviewRulerBorder: false,
-                    lineNumbers: 'on',
-                    glyphMargin: false,
-                    folding: false,
-                }}
-            />
-        );
-    };
+            <div className="flex-1 flex overflow-hidden bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-color)]">
+                {/* 编辑器/预览区域 */}
+                <div className="flex-1 flex flex-col overflow-hidden">
 
-    if (tabs.length === 0) {
-        return (
-            <div className="flex-1 h-full bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-color)] flex flex-col items-center justify-center text-[var(--text-secondary)] select-none">
-                <div className="flex flex-col items-center max-w-md text-center p-8 rounded-3xl bg-[var(--bg-app)]/50 border border-[var(--border-color)]">
-                    <Command size={64} strokeWidth={1} className="mb-6 opacity-40 text-blue-500" />
-                    <h1 className="text-xl font-medium mb-2 text-[var(--text-primary)]">{t('app.name', lang)}</h1>
-                    <p className="text-sm">{t('main.selectPrompt', lang)}</p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex-1 h-full bg-[var(--bg-editor)] rounded-2xl border border-[var(--border-color)] flex flex-col overflow-hidden shadow-sm" onKeyDown={handleKeyDown}>
-
-            {/* Tab Bar */}
-            <div className="h-10 bg-[var(--bg-app)] flex items-center px-2 pt-2 gap-1 overflow-x-auto no-scrollbar border-b border-[var(--border-color)]">
-                {tabs.map(tab => {
-                    const isActive = tab.id === activeTabId;
-                    const tabName = tab.type === 'settings' ? t('settings.title', lang) : tab.name;
-
-                    return (
-                        <div
-                            key={tab.id}
-                            onClick={() => onSwitchTab(tab.id)}
-                            className={`
-                            group relative flex items-center h-full min-w-[140px] max-w-[200px] px-3 pr-8 rounded-t-lg text-xs cursor-pointer select-none border-t border-x transition-colors
-                            ${isActive
-                                    ? 'bg-[var(--bg-editor)] border-[var(--border-color)] text-[var(--text-primary)] border-b-[var(--bg-editor)]'
-                                    : 'bg-[var(--bg-panel)] border-transparent text-[var(--text-secondary)] hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)]'
-                                }
-                        `}
-                        >
-                            <span className="mr-2 opacity-80">{getIconForName(tab.name, tab.type, 14)}</span>
-                            <span className="truncate">{tabName}</span>
-
-                            <div
-                                className="absolute right-2 p-0.5 rounded-md hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)] text-transparent group-hover:text-[var(--text-secondary)] transition-all flex items-center justify-center"
-                                onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
-                            >
-                                {tab.isDirty ? <Circle size={8} fill="currentColor" className="text-[var(--text-secondary)] group-hover:hidden" /> : null}
-                                <X size={14} className={tab.isDirty ? "hidden group-hover:block" : ""} />
-                            </div>
-
-                            {isActive && <div className="absolute top-0 left-0 right-0 h-[2px] bg-blue-500 rounded-t-full" />}
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Toolbar Header (For Active Tab) */}
-            {activeTab && activeTab.type !== 'settings' && (
-                <div className="h-10 bg-[var(--bg-editor)] flex items-center px-4 border-b border-[var(--border-color)] justify-between">
-                    <div className="flex items-center space-x-3">
-                        <span className="text-xs text-[var(--text-secondary)]">
-                            {activeTab.type.toUpperCase()} <span className="text-[var(--text-secondary)]">/</span> {activeTab.name}
-                        </span>
-                        {activeTab.isDirty ? (
-                            <div className="flex items-center text-[10px] text-yellow-500/80 gap-1 bg-yellow-500/10 px-2 py-0.5 rounded-full">
-                                <Circle size={6} fill="currentColor" /> {t('main.unsaved', lang)}
-                            </div>
-                        ) : (
-                            <div className="flex items-center text-[10px] text-green-500/50 gap-1">
-                                <CheckCircle2 size={10} /> {t('main.saved', lang)}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                        {diffVersion ? (
-                            <div className="flex items-center gap-2 mr-2">
-                                <span className="text-xs text-[var(--text-secondary)] font-medium bg-purple-500/10 text-purple-400 px-2 py-1 rounded">
-                                    {t('versions.diffTitle', lang)}: {diffVersion.label}
-                                </span>
+                    {/* 视图切换栏 */}
+                    <div className="flex items-center border-b border-[var(--border-color)] px-4 h-10">
+                        {/* Diff 模式提示 */}
+                        {diffVersionId && diffVersion ? (
+                            <div className="flex items-center gap-2 text-xs text-blue-400 flex-1">
+                                <GitCompareArrows size={14} />
+                                <span>{t('versions.diffTitle', lang)}: {diffVersion.label || new Date(diffVersion.timestamp).toLocaleString()}</span>
                                 <button
-                                    onClick={() => setDiffVersion(null)}
-                                    className="px-2 py-1 bg-[var(--item-hover)] hover:bg-zinc-700 text-[10px] rounded border border-[var(--border-color)]"
+                                    className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-0.5 rounded hover:bg-[var(--item-hover)]"
+                                    onClick={exitDiff}
                                 >
                                     {t('versions.exitDiff', lang)}
                                 </button>
                             </div>
                         ) : (
-                            <>
-                                <button
-                                    onClick={() => onSave(activeTab.id)}
-                                    title="Save (Ctrl+S)"
-                                    className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)] rounded transition-colors"
-                                >
-                                    <Save size={14} />
-                                </button>
-
-                                <button
-                                    onClick={() => {
-                                        setShowDetails(!showDetails);
-                                        if (!showDetails) setShowHistory(false);
-                                    }}
-                                    title={t('main.info', lang)}
-                                    className={`p-1.5 rounded transition-colors ${showDetails ? 'text-blue-400 bg-blue-400/10' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)]'}`}
-                                >
-                                    <Info size={14} />
-                                </button>
-
-                                <button
-                                    onClick={() => {
-                                        setShowHistory(!showHistory);
-                                        if (!showHistory) setShowDetails(false);
-                                        if (diffVersion) setDiffVersion(null);
-                                    }}
-                                    title={t('main.history', lang)}
-                                    className={`p-1.5 rounded transition-colors ${showHistory ? 'text-blue-400 bg-blue-400/10' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)]'}`}
-                                >
-                                    <History size={14} />
-                                </button>
-
-                                <div className="h-4 w-[1px] bg-[var(--border-color)] mx-1" />
-                                <div className="flex items-center bg-[var(--bg-app)] p-0.5 rounded-lg border border-[var(--border-color)]">
+                            <div className="flex items-center gap-1">
+                                {([
+                                    { view: 'code' as MainView, icon: <Code2 size={14} />, label: t('main.code', lang) },
+                                    { view: 'preview' as MainView, icon: <Eye size={14} />, label: t('main.preview', lang) },
+                                ] as const).map((btn) => (
                                     <button
-                                        className={`p-1 px-2 rounded-md text-[10px] font-medium transition-all ${!isPreview ? 'bg-[var(--item-hover)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                                        onClick={() => setIsPreview(false)}
+                                        key={btn.view}
+                                        onClick={() => setCurrentView(btn.view)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${currentView === btn.view ? 'bg-[var(--item-hover)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                                     >
-                                        {t('main.code', lang)}
+                                        {btn.icon} {btn.label}
                                     </button>
-                                    <button
-                                        className={`p-1 px-2 rounded-md text-[10px] font-medium transition-all ${isPreview ? 'bg-blue-600 text-white shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-                                        onClick={() => setIsPreview(true)}
-                                    >
-                                        {t('main.preview', lang)}
-                                    </button>
-                                </div>
-                            </>
+                                ))}
+                            </div>
                         )}
+
+                        {/* 右侧按钮 */}
+                        <div className="flex-1" />
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setCurrentView(currentView === 'history' ? 'code' : 'history')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${currentView === 'history' ? 'bg-[var(--item-hover)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            >
+                                <History size={14} /> {t('main.history', lang)}
+                            </button>
+                            <button
+                                onClick={() => setCurrentView(currentView === 'info' ? 'code' : 'info')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${currentView === 'info' ? 'bg-[var(--item-hover)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                            >
+                                <Info size={14} /> {t('main.info', lang)}
+                            </button>
+                        </div>
                     </div>
+
+                    {/* 主内容 */}
+                    <div className="flex-1 overflow-hidden">
+                        {currentView === 'code' && !diffVersionId && (
+                            <Editor
+                                language="markdown"
+                                value={activeTab.content}
+                                onChange={handleEditorChange}
+                                onMount={handleEditorMount}
+                                theme={theme}
+                                options={{
+                                    fontSize: settings.editorFontSize,
+                                    fontFamily: settings.editorFontFamily,
+                                    minimap: { enabled: false },
+                                    wordWrap: 'on',
+                                    lineNumbers: 'on',
+                                    padding: { top: 16 },
+                                    scrollBeyondLastLine: false,
+                                    renderWhitespace: 'selection',
+                                    glyphMargin: false,
+                                    folding: true,
+                                    lineDecorationsWidth: 0,
+                                    lineNumbersMinChars: 3,
+                                }}
+                            />
+                        )}
+
+                        {currentView === 'code' && diffVersionId && diffVersion && (
+                            <Editor
+                                language="markdown"
+                                value={activeTab.content}
+                                theme={theme}
+                                options={{
+                                    fontSize: settings.editorFontSize,
+                                    fontFamily: settings.editorFontFamily,
+                                    readOnly: true,
+                                    minimap: { enabled: false },
+                                    wordWrap: 'on',
+                                    renderWhitespace: 'all',
+                                    padding: { top: 16 },
+                                }}
+                            />
+                        )}
+
+                        {currentView === 'preview' && (
+                            <div className="h-full overflow-y-auto p-6 prose prose-invert max-w-none text-[var(--text-primary)]">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {activeTab.content}
+                                </ReactMarkdown>
+                            </div>
+                        )}
+
+                        {currentView === 'history' && renderVersionHistory()}
+                        {currentView === 'info' && renderDetailsPanel()}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Tab 栏 */}
+            {tabs.length > 0 && (
+                <div className="flex items-center h-10 overflow-x-auto bg-[var(--bg-panel)] rounded-t-2xl border border-[var(--border-color)] border-b-0 px-2">
+                    {tabs.map(tab => (
+                        <div
+                            key={tab.id}
+                            onClick={() => onSwitchTab(tab.id)}
+                            className={`
+                flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer rounded-md mr-1 transition-colors
+                ${tab.id === activeTabId ? 'bg-[var(--item-hover)] text-[var(--text-primary)] font-medium' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)]/50'}
+              `}
+                        >
+                            <div className="opacity-75">{getIconForName(tab.name, tab.type, 12, tab.metadata)}</div>
+                            <span className="truncate max-w-[120px]">{tab.name}</span>
+                            {tab.isDirty && (
+                                <div className="w-2 h-2 rounded-full bg-blue-400" title={t('main.unsaved', lang)} />
+                            )}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
+                                className="opacity-0 group-hover:opacity-100 hover:bg-[var(--item-hover)] rounded p-0.5 ml-1"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    ))}
                 </div>
             )}
 
-            <div className="flex-1 flex overflow-hidden">
-                {/* Content Area */}
-                <div className="flex-1 relative overflow-hidden bg-[var(--bg-editor)]">
-                    {renderContent()}
-                </div>
-
-                {/* History Sidebar */}
-                {activeTab && activeTab.type !== 'settings' && showHistory && (
-                    <div className="w-64 bg-[var(--bg-panel)] border-l border-[var(--border-color)] flex flex-col animate-in slide-in-from-right-10 duration-200">
-                        <div className="p-3 border-b border-[var(--border-color)] flex justify-between items-center">
-                            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{t('versions.title', lang)}</span>
-                            <button onClick={() => setShowHistory(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-                                <X size={14} />
-                            </button>
-                        </div>
-
-                        {/* Create Version Form */}
-                        <div className="p-3 border-b border-[var(--border-color)] bg-[var(--bg-app)]/30">
-                            {showVersionInput ? (
-                                <div className="flex flex-col gap-2">
-                                    <input
-                                        autoFocus
-                                        className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-xs p-1.5 rounded focus:outline-none focus:border-blue-500"
-                                        placeholder={t('versions.labelPlaceholder', lang)}
-                                        value={versionLabel}
-                                        onChange={(e) => setVersionLabel(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleCreateVersion()}
-                                    />
-                                    <div className="flex justify-end gap-2">
-                                        <button onClick={() => setShowVersionInput(false)} className="text-xs px-2 py-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{t('modal.cancel', lang)}</button>
-                                        <button onClick={handleCreateVersion} className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">{t('modal.save', lang)}</button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <button
-                                    onClick={() => setShowVersionInput(true)}
-                                    className="w-full flex items-center justify-center gap-2 py-1.5 rounded border border-dashed border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-blue-500 hover:text-blue-500 transition-colors"
-                                >
-                                    <Plus size={12} /> {t('versions.create', lang)}
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Versions List */}
-                        <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                            {(!activeTab.versions || activeTab.versions.length === 0) && (
-                                <div className="text-center py-8 text-xs text-[var(--text-secondary)] italic">
-                                    {t('versions.empty', lang)}
-                                </div>
-                            )}
-
-                            {activeTab.versions?.map((v) => (
-                                <div key={v.id} className="group p-2 rounded-lg hover:bg-[var(--item-hover)] border border-transparent hover:border-[var(--border-color)] transition-all">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <span className="text-xs font-medium text-[var(--text-primary)]">{v.label || 'Untitled'}</span>
-                                        <span className="text-[10px] text-[var(--text-secondary)] whitespace-nowrap">{new Date(v.timestamp).toLocaleDateString()}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between mt-2">
-                                        <span className="text-[10px] text-[var(--text-secondary)] flex items-center gap-1">
-                                            <Clock size={10} /> {new Date(v.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => setDiffVersion(v)}
-                                                title={t('versions.compare', lang)}
-                                                className="p-1 hover:bg-purple-500/20 hover:text-purple-400 rounded text-[var(--text-secondary)]"
-                                            >
-                                                <GitCompare size={12} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleRestoreVersion(v)}
-                                                title={t('versions.restore', lang)}
-                                                className="p-1 hover:bg-red-500/20 hover:text-red-400 rounded text-[var(--text-secondary)]"
-                                            >
-                                                <RotateCcw size={12} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Details Sidebar */}
-                {activeTab && activeTab.type !== 'settings' && showDetails && (
-                    <div className="w-64 bg-[var(--bg-panel)] border-l border-[var(--border-color)] flex flex-col animate-in slide-in-from-right-10 duration-200">
-                        <div className="p-3 border-b border-[var(--border-color)] flex justify-between items-center">
-                            <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{t('details.title', lang)}</span>
-                            <button onClick={() => setShowDetails(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-                                <X size={14} />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-xs font-medium text-[var(--text-secondary)] block">{t('details.description', lang)}</label>
-                                <textarea
-                                    className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] p-2 rounded focus:outline-none focus:border-blue-500 min-h-[120px] resize-none"
-                                    placeholder={t('details.placeholder', lang)}
-                                    value={activeTab.metadata?.description || ''}
-                                    onChange={(e) => handleMetadataChange('description', e.target.value)}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            {/* 内容区 */}
+            {renderContent()}
         </div>
     );
 };

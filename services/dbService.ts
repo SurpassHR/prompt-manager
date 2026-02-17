@@ -21,7 +21,6 @@ class TauriDatabaseService implements IDatabaseService {
 
   async getItem(id: string): Promise<TreeItem | null> {
     try {
-      // Rust returns Option<TreeItem>, which maps to TreeItem | null in JS
       return await invoke<TreeItem | null>('get_item', { id });
     } catch (error) {
       console.error(`Failed to fetch item ${id}:`, error);
@@ -30,15 +29,8 @@ class TauriDatabaseService implements IDatabaseService {
   }
 
   async addItem(parentId: string | null, item: Omit<TreeItem, 'id' | 'children'>): Promise<TreeItem> {
-    // We need to construct a partial TreeItem to send to Rust, as Rust expects a specific struct.
-    // However, our Rust `add_item` command expects a `TreeItem`.
-    // We'll create a temporary object that matches what Rust expects, filling in defaults.
-    // Actually, it's better if we let Rust handle ID generation.
-    // The Rust signature is `add_item(parent_id: Option<String>, item: TreeItem)`.
-    // We should send the basic fields.
-
     const payload = {
-      id: "", // Rust will regenerate this
+      id: "",
       name: item.name,
       type: item.type,
       children: [],
@@ -52,26 +44,14 @@ class TauriDatabaseService implements IDatabaseService {
   }
 
   async updateItem(id: string, updates: Partial<TreeItem>): Promise<TreeItem> {
-    // Rust `update_item` expects a `TreeItem`. We might need to fetch it first or change Rust sig.
-    // But typically we pass the updates.
-    // In our Rust implementation: `fn update_item(id: String, updates: TreeItem)`
-    // It replaces fields. This might be too aggressive if we only send partial.
-    // Let's assume for now we send a full object or at least the fields we want to update.
-    // Since `updates` is Partial, we might need to cast it or change how we call it.
-    // For simplicity, let's assume we pass the fields present in `updates` and Rust merges.
-    // But `TreeItem` in Rust is strict.
-    // We'll construct a "dummy" TreeItem with the updates.
-    // WARNING: Our Rust implementation `update_item` does partial updates manually?
-    // Checking Rust code: `node.name = updates.name; ...`
-    // It overrides fields. This means we must send VALID fields.
-    // If `updates` only contains `name`, `content` will be empty string?
-    // We should probably fetch the item first, merge in JS, then send back.
-
-    // Better approach: Fetch, Merge, Update
     const current = await this.getItem(id);
     if (!current) throw new Error("Item not found");
 
     const merged = { ...current, ...updates };
+    // 合并 metadata 而不是覆盖
+    if (updates.metadata && current.metadata) {
+      merged.metadata = { ...current.metadata, ...updates.metadata };
+    }
     return await invoke<TreeItem>('update_item', { id, updates: merged });
   }
 
@@ -84,95 +64,85 @@ class TauriDatabaseService implements IDatabaseService {
   }
 }
 
-/* --- MOCK IMPLEMENTATION (Fallback) --- */
+/* --- MOCK DATA --- */
 
-// Initial Mock Data
 let MOCK_DATA_STORE: TreeItem[] = [
   {
-    id: 'p-1',
-    name: 'OpenAI',
-    type: 'provider',
-    metadata: { lastModified: Date.now() - 86400000 * 2 }, // 2 days ago
+    id: 'folder-1',
+    name: '通用助手',
+    type: 'folder',
+    metadata: { lastModified: Date.now() - 86400000 * 2 },
     children: [
       {
-        id: 'm-1',
-        name: 'GPT-4',
-        type: 'model',
-        parentId: 'p-1',
-        metadata: { lastModified: Date.now() - 86400000 * 2 },
-        children: [
+        id: 'pr-1',
+        name: 'Summarizer',
+        type: 'prompt',
+        parentId: 'folder-1',
+        content: 'You are a helpful assistant. Summarize the following text:\n\n{{text}}\n\nKeep it concise.',
+        metadata: {
+          lastModified: Date.now(),
+          description: 'A general purpose summarization prompt optimized for business documents.',
+          provider: 'OpenAI',
+          modelName: 'gpt-4',
+        },
+        versions: [
           {
-            id: 'v-1',
-            name: 'Production',
-            type: 'version',
-            parentId: 'm-1',
-            metadata: { lastModified: Date.now() - 86400000 * 2 },
-            children: [
-              {
-                id: 'pr-1',
-                name: 'Summarizer',
-                type: 'prompt',
-                parentId: 'v-1',
-                content: 'You are a helpful assistant. Summarize the following text:\n\n{{text}}\n\nKeep it concise.',
-                metadata: {
-                  lastModified: Date.now(),
-                  description: 'A general purpose summarization prompt optimized for business documents.'
-                }, // Today
-                versions: [
-                  {
-                    id: 'ver-1',
-                    timestamp: Date.now() - 100000000,
-                    label: 'Initial Draft',
-                    content: 'Summarize the text below.'
-                  }
-                ]
-              }
-            ]
-          },
-          { id: 'v-2', name: 'Drafts', type: 'version', parentId: 'm-1', children: [], metadata: { lastModified: Date.now() - 86400000 * 10 } }
+            id: 'ver-1',
+            timestamp: Date.now() - 100000000,
+            label: 'Initial Draft',
+            content: 'Summarize the text below.'
+          }
         ]
       },
       {
-        id: 'm-2',
-        name: 'GPT-3.5',
-        type: 'model',
-        parentId: 'p-1',
-        metadata: { lastModified: Date.now() - 86400000 * 20 },
-        children: []
+        id: 'pr-2',
+        name: 'Code Reviewer',
+        type: 'prompt',
+        parentId: 'folder-1',
+        content: 'You are a senior code reviewer. Review the following code for bugs, performance issues, and best practices:\n\n```\n{{code}}\n```',
+        metadata: {
+          lastModified: Date.now() - 86400000,
+          description: 'Code review prompt with focus on quality.',
+          provider: 'Anthropic',
+          modelName: 'claude-3.5-sonnet',
+        },
       }
     ]
   },
   {
-    id: 'p-2',
-    name: 'Google',
-    type: 'provider',
-    metadata: { lastModified: Date.now() - 86400000 * 5 },
-    children: [
-      {
-        id: 'm-3',
-        name: 'Gemini',
-        type: 'model',
-        parentId: 'p-2',
-        metadata: { lastModified: Date.now() - 86400000 * 5 },
-        children: [
-          { id: 'v-3', name: 'gemini-1.5-pro', type: 'version', parentId: 'm-3', children: [] },
-          { id: 'v-4', name: 'gemini-flash', type: 'version', parentId: 'm-3', children: [] }
-        ]
-      }
-    ]
+    id: 'pr-3',
+    name: 'Translator',
+    type: 'prompt',
+    content: 'Translate the following text from {{source_lang}} to {{target_lang}}:\n\n{{text}}',
+    metadata: {
+      lastModified: Date.now() - 86400000 * 5,
+      description: 'Multi-language translator.',
+      provider: 'Google',
+      modelName: 'gemini-1.5-pro',
+    },
+  },
+  {
+    id: 'pr-4',
+    name: 'Creative Writer',
+    type: 'prompt',
+    content: 'You are a creative fiction writer. Write a short story about:\n\n{{topic}}',
+    metadata: {
+      lastModified: Date.now() - 86400000 * 10,
+      description: 'Creative writing assistant.',
+    },
   }
 ];
 
+/* --- MOCK IMPLEMENTATION --- */
+
 class MockDatabaseService implements IDatabaseService {
 
-  // Simulate network delay
   private async delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   async getItems(): Promise<TreeItem[]> {
     await this.delay(100);
-    // Return deep copy to prevent external mutation issues
     return JSON.parse(JSON.stringify(MOCK_DATA_STORE));
   }
 
@@ -186,20 +156,20 @@ class MockDatabaseService implements IDatabaseService {
     const newItem: TreeItem = {
       ...item,
       id: Math.random().toString(36).substr(2, 9),
-      children: [],
+      children: item.type === 'folder' ? [] : undefined,
       content: item.content || '',
-      metadata: { lastModified: Date.now() }
+      metadata: { ...item.metadata, lastModified: Date.now() }
     };
 
     if (!parentId) {
       MOCK_DATA_STORE.push(newItem);
     } else {
       const parent = this.findNode(MOCK_DATA_STORE, parentId);
-      if (parent) {
+      if (parent && parent.type === 'folder') {
         if (!parent.children) parent.children = [];
         parent.children.push(newItem);
       } else {
-        throw new Error('Parent not found');
+        throw new Error('Parent not found or not a folder');
       }
     }
     return newItem;
@@ -210,7 +180,6 @@ class MockDatabaseService implements IDatabaseService {
     const node = this.findNode(MOCK_DATA_STORE, id);
     if (!node) throw new Error('Item not found');
 
-    // Update metadata timestamp automatically
     const newMetadata = { ...node.metadata, ...updates.metadata, lastModified: Date.now() };
     Object.assign(node, { ...updates, metadata: newMetadata });
 
@@ -219,7 +188,6 @@ class MockDatabaseService implements IDatabaseService {
 
   async deleteItem(id: string): Promise<void> {
     await this.delay(100);
-    // Explicitly update the global store reference
     MOCK_DATA_STORE = this.deleteNodeRecursively(MOCK_DATA_STORE, id);
   }
 
@@ -235,16 +203,6 @@ class MockDatabaseService implements IDatabaseService {
         let isMatch = false;
         const matches: SearchMatch[] = [];
 
-        // 1. Filter by Type
-        if (filters && filters.types && filters.types.length > 0) {
-          if (!filters.types.includes(node.type)) {
-            // Skip if type mismatch, BUT continue traversing children (a provider might match type filter, but children might not, or vice versa if we only want prompts)
-            // Actually, if we filter by 'prompt', we still need to look inside providers to find them.
-            // So we don't 'continue' loop, we just don't add THIS node.
-          }
-        }
-
-        // 2. Filter by Date
         let dateMatch = true;
         if (filters && filters.date && filters.date !== 'any') {
           const lastMod = node.metadata?.lastModified || 0;
@@ -255,17 +213,14 @@ class MockDatabaseService implements IDatabaseService {
           if (filters.date === 'month' && now - lastMod > oneDay * 30) dateMatch = false;
         }
 
-        // Check Logic
-        // We only consider adding the node if it matches the Type and Date filters (if specific type filter is active)
         const typeMatch = !filters?.types || filters.types.length === 0 || filters.types.includes(node.type);
 
         if (typeMatch && dateMatch) {
-          // Check Name
           if (node.name.toLowerCase().includes(lowerQuery)) {
             isMatch = true;
           }
 
-          // Check Content (only for prompts)
+          // 搜索提示词内容
           if (node.type === 'prompt' && node.content) {
             const lines = node.content.split('\n');
             lines.forEach((line, index) => {
@@ -322,19 +277,17 @@ class MockDatabaseService implements IDatabaseService {
 
   private deleteNodeRecursively(nodes: TreeItem[], id: string): TreeItem[] {
     return nodes.filter(node => {
-      if (node.id === id) {
-        return false; // Remove this node
-      }
+      if (node.id === id) return false;
       if (node.children && node.children.length > 0) {
-        // Recursively update children
         node.children = this.deleteNodeRecursively(node.children, id);
       }
-      return true; // Keep this node
+      return true;
     });
   }
 }
 
-// Export the selected service based on configuration
+/* --- LOCALSTORAGE IMPLEMENTATION --- */
+
 class LocalStorageDatabaseService implements IDatabaseService {
   private STORAGE_KEY = 'prompt_manager_data';
 
@@ -374,20 +327,20 @@ class LocalStorageDatabaseService implements IDatabaseService {
     const newItem: TreeItem = {
       ...item,
       id: Math.random().toString(36).substr(2, 9),
-      children: [],
+      children: item.type === 'folder' ? [] : undefined,
       content: item.content || '',
-      metadata: { lastModified: Date.now() }
+      metadata: { ...item.metadata, lastModified: Date.now() }
     };
 
     if (!parentId) {
       data.push(newItem);
     } else {
       const parent = this.findNode(data, parentId);
-      if (parent) {
+      if (parent && parent.type === 'folder') {
         if (!parent.children) parent.children = [];
         parent.children.push(newItem);
       } else {
-        throw new Error('Parent not found');
+        throw new Error('Parent not found or not a folder');
       }
     }
     this.saveData(data);
@@ -423,12 +376,6 @@ class LocalStorageDatabaseService implements IDatabaseService {
       for (const node of nodes) {
         let isMatch = false;
         const matches: SearchMatch[] = [];
-
-        if (filters && filters.types && filters.types.length > 0) {
-          if (!filters.types.includes(node.type)) {
-            // continue types check
-          }
-        }
 
         let dateMatch = true;
         if (filters && filters.date && filters.date !== 'any') {
@@ -512,11 +459,11 @@ class LocalStorageDatabaseService implements IDatabaseService {
   }
 }
 
-// Export the selected service based on configuration
+// 根据配置导出选定的服务
 console.log(`[Database] Initializing with storage type: ${STORAGE_TYPE} (local = localStorage, tauri = rust backend)`);
 
 export const dbService =
   STORAGE_TYPE === 'local' ? new LocalStorageDatabaseService() :
     STORAGE_TYPE === 'mock' ? new MockDatabaseService() :
       STORAGE_TYPE === 'tauri' ? new TauriDatabaseService() :
-        new TauriDatabaseService(); // Default to Tauri now instead of API
+        new TauriDatabaseService();
