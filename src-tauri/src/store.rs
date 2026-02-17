@@ -2,8 +2,7 @@ use crate::models::{ItemType, SearchFilters, SearchMatch, SearchResult, TreeItem
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::api::path::app_data_dir;
-use tauri::Config;
+use tauri::{AppHandle, Manager};
 
 pub struct Store {
     pub data: Mutex<Vec<TreeItem>>,
@@ -11,8 +10,11 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new(config: &Config) -> Self {
-        let app_data_path = app_data_dir(config).expect("Failed to resolve app data dir");
+    pub fn new(app_handle: &AppHandle) -> Self {
+        let app_data_path = app_handle
+            .path()
+            .app_data_dir()
+            .expect("Failed to resolve app data dir");
         let store_dir = app_data_path.join("com.prompt-manager.app");
 
         // Ensure directory exists

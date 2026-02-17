@@ -6,7 +6,7 @@ const STORAGE_TYPE = import.meta.env.VITE_STORAGE_TYPE || 'api';
 const API_BASE_URL = 'http://localhost:8000';
 
 /* --- TAURI IMPLEMENTATION (Pure Rust Backend) --- */
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 
 class TauriDatabaseService implements IDatabaseService {
 

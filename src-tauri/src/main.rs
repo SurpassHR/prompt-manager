@@ -49,10 +49,9 @@ fn move_item(item_id: String, new_parent_id: Option<String>, store: State<Store>
 
 fn main() {
     tauri::Builder::default()
-        .manage(Store::new(&tauri::Config::default()))
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-             let handle = app.handle();
-             let store = Store::new(&handle.config());
+             let store = Store::new(app.handle());
              app.manage(store);
              Ok(())
         })
