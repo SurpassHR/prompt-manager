@@ -51,6 +51,12 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, item: null });
 
+  // 拖拽状态
+  const [dragItemId, setDragItemId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null); // null = root
+  const [isDropOnRoot, setIsDropOnRoot] = useState(false);
+  const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -240,6 +246,135 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     }
   };
 
+  /* --- 拖拽处理 --- */
+
+  const handleDragStart = (e: React.DragEvent, node: TreeItem) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', node.id);
+    setDragItemId(node.id);
+  };
+
+  const handleDragEnd = () => {
+    setDragItemId(null);
+    setDropTargetId(null);
+    setIsDropOnRoot(false);
+    if (dragExpandTimerRef.current) {
+      clearTimeout(dragExpandTimerRef.current);
+      dragExpandTimerRef.current = null;
+    }
+  };
+
+  // 检查 a 是否是 b 的祖先（防止拖入自身子树）
+  const isAncestor = (items: TreeItem[], ancestorId: string, targetId: string): boolean => {
+    for (const item of items) {
+      if (item.id === ancestorId) {
+        const findInChildren = (nodes: TreeItem[]): boolean => {
+          for (const n of nodes) {
+            if (n.id === targetId) return true;
+            if (n.children && findInChildren(n.children)) return true;
+          }
+          return false;
+        };
+        return findInChildren(item.children || []);
+      }
+      if (item.children && isAncestor(item.children, ancestorId, targetId)) return true;
+    }
+    return false;
+  };
+
+  // 查找节点的父 folder id
+  const findParentFolderId = (nodes: TreeItem[], targetId: string, parentId: string | null = null): string | null => {
+    for (const node of nodes) {
+      if (node.id === targetId) return parentId;
+      if (node.children) {
+        const found = findParentFolderId(node.children, targetId, node.type === 'folder' ? node.id : parentId);
+        if (found !== undefined && found !== null) return found;
+        // 如果在子树中找到了目标但返回 null（说明是根级 folder 的直接子项）
+        // 需要继续查找
+        if (node.children.some(c => c.id === targetId)) {
+          return node.type === 'folder' ? node.id : null;
+        }
+      }
+    }
+    return undefined as any; // 未找到
+  };
+
+  const handleDragOverNode = (e: React.DragEvent, node: TreeItem) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    if (!dragItemId || node.id === dragItemId) return;
+
+    if (node.type === 'folder') {
+      // folder 节点：自己就是 drop target
+      e.stopPropagation();
+      setIsDropOnRoot(false);
+
+      if (isAncestor(items, dragItemId, node.id)) return;
+
+      setDropTargetId(node.id);
+
+      // 悬停 600ms 自动展开文件夹
+      if (!expandedIds.has(node.id)) {
+        if (dragExpandTimerRef.current) clearTimeout(dragExpandTimerRef.current);
+        dragExpandTimerRef.current = setTimeout(() => {
+          setExpandedIds(prev => new Set([...prev, node.id]));
+        }, 600);
+      }
+    } else {
+      // 非 folder 节点：查找其父 folder 作为 drop target
+      const parentFolderId = findParentFolderId(items, node.id);
+      if (parentFolderId) {
+        e.stopPropagation();
+        setIsDropOnRoot(false);
+        setDropTargetId(parentFolderId);
+      } else {
+        // 根级 prompt：不阻止冒泡，让事件传到 root drop zone
+        setDropTargetId(null);
+      }
+    }
+  };
+
+  const handleDropOnNode = async (e: React.DragEvent, targetNode: TreeItem) => {
+    e.preventDefault();
+    if (!dragItemId || dragItemId === targetNode.id) return;
+    if (targetNode.type !== 'folder') return; // 让事件冒泡到 root
+
+    e.stopPropagation();
+
+    try {
+      await dbService.moveItem(dragItemId, targetNode.id);
+      await loadItems(true);
+      // 展开目标文件夹
+      setExpandedIds(prev => new Set([...prev, targetNode.id]));
+    } catch (err) {
+      console.error('Move failed:', err);
+    }
+    handleDragEnd();
+  };
+
+  const handleDragOverRoot = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragItemId) {
+      setDropTargetId(null);
+      setIsDropOnRoot(true);
+    }
+  };
+
+  const handleDropOnRoot = async (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!dragItemId) return;
+
+    try {
+      await dbService.moveItem(dragItemId, null);
+      await loadItems(true);
+    } catch (err) {
+      console.error('Move to root failed:', err);
+    }
+    handleDragEnd();
+  };
+
   /* --- 渲染 --- */
 
   const renderInputRow = (level: number) => {
@@ -284,52 +419,87 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
 
       const paddingLeft = `${level * 12 + 12}px`;
 
-      return (
-        <React.Fragment key={node.id}>
-          <div
-            className={`
-              flex items-center group cursor-pointer h-8 text-sm select-none pr-2 mx-2 rounded-lg transition-colors duration-150 my-[1px]
-              ${isSelected && !isRenaming ? 'bg-zinc-700/50 text-[var(--text-primary)] font-medium' : 'text-[var(--text-secondary)] hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)]'}
-            `}
-            style={{ paddingLeft }}
-            onClick={() => {
-              if (isRenaming) return;
-              setSelectedId(node.id);
-              if (isFolder) toggleExpand(node.id);
-              else if (isPrompt) onSelectPrompt(node.id, node.name, node.type);
-            }}
-            onContextMenu={(e) => handleContextMenu(e, node)}
-            title={node.metadata?.description || ''}
-          >
-            {/* 折叠箭头：只有 folder 显示 */}
-            <div className={`w-5 flex items-center justify-center mr-0.5 ${!isFolder ? 'opacity-0' : ''}`}>
-              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </div>
+      const isDragging = dragItemId === node.id;
+      const isDropTarget = dropTargetId === node.id && isFolder;
 
-            <div className="mr-2 shrink-0 opacity-80">
-              {getIconForName(node.name, node.type, 16, node.metadata)}
-            </div>
-
-            {isRenaming ? renderRenameInput(node) : (
-              <span className="flex-1 truncate text-[13px]">{node.name}</span>
-            )}
-
-            {/* hover 按钮：folder 显示添加子项按钮 */}
-            {!isRenaming && isFolder && (
-              <div className="hidden group-hover:flex items-center space-x-1 ml-2 opacity-60">
-                <FilePlus size={13} className="hover:text-[var(--text-primary)]" onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'prompt'); }} title={t('sidepanel.newPrompt', language)} />
-                <FolderPlus size={13} className="hover:text-[var(--text-primary)]" onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'folder'); }} title={t('sidepanel.newFolder', language)} />
-              </div>
-            )}
+      // 行内容渲染（folder 和 prompt 共用）
+      const rowContent = (
+        <div
+          className={`
+            flex items-center group cursor-pointer h-8 text-sm select-none pr-2 mx-2 rounded-lg transition-all duration-150 my-[1px]
+            ${isSelected && !isRenaming ? 'bg-zinc-700/50 text-[var(--text-primary)] font-medium' : 'text-[var(--text-secondary)] hover:bg-[var(--item-hover)] hover:text-[var(--text-primary)]'}
+            ${isDragging ? 'opacity-40' : ''}
+          `}
+          style={{ paddingLeft }}
+          draggable={!isRenaming}
+          onDragStart={(e) => handleDragStart(e, node)}
+          onDragEnd={handleDragEnd}
+          onDragOver={(e) => handleDragOverNode(e, node)}
+          onDrop={(e) => handleDropOnNode(e, node)}
+          onClick={() => {
+            if (isRenaming) return;
+            setSelectedId(node.id);
+            if (isFolder) toggleExpand(node.id);
+            else if (isPrompt) onSelectPrompt(node.id, node.name, node.type);
+          }}
+          onContextMenu={(e) => handleContextMenu(e, node)}
+          title={node.metadata?.description || ''}
+        >
+          {/* 折叠箭头：只有 folder 显示 */}
+          <div className={`w-5 flex items-center justify-center mr-0.5 ${!isFolder ? 'opacity-0' : ''}`}>
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </div>
 
-          {/* 展开子项 */}
-          {isFolder && isExpanded && (
-            <>
-              {node.children && renderTree(node.children, level + 1)}
-              {showInput && inputParentId === node.id && renderInputRow(level + 1)}
-            </>
+          <div className="mr-2 shrink-0 opacity-80">
+            {getIconForName(node.name, node.type, 16, node.metadata)}
+          </div>
+
+          {isRenaming ? renderRenameInput(node) : (
+            <span className="flex-1 truncate text-[13px]">{node.name}</span>
           )}
+
+          {/* hover 按钮：folder 显示添加子项按钮 */}
+          {!isRenaming && isFolder && (
+            <div className="hidden group-hover:flex items-center space-x-1 ml-2 opacity-60">
+              <span onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'prompt'); }} title={t('sidepanel.newPrompt', language)} className="hover:text-[var(--text-primary)] cursor-pointer"><FilePlus size={13} /></span>
+              <span onClick={(e) => { e.stopPropagation(); initiateAdd(node.id, 'folder'); }} title={t('sidepanel.newFolder', language)} className="hover:text-[var(--text-primary)] cursor-pointer"><FolderPlus size={13} /></span>
+            </div>
+          )}
+        </div>
+      );
+
+      // Folder：用 wrapper div 包住头 + 子项，整体高亮
+      if (isFolder) {
+        return (
+          <React.Fragment key={node.id}>
+            <div
+              className={`rounded-lg transition-all duration-150 ${isDropTarget ? 'bg-blue-500/5' : ''}`}
+              style={isDropTarget ? { boxShadow: 'inset 0 0 0 2px rgba(59,130,246,0.35)', borderRadius: '0.5rem' } : undefined}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); handleDragOverNode(e, node); }}
+              onDragLeave={(e) => {
+                // 只在离开 wrapper 而非进入子元素时清除
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  if (dropTargetId === node.id) setDropTargetId(null);
+                }
+              }}
+              onDrop={(e) => handleDropOnNode(e, node)}
+            >
+              {rowContent}
+              {isExpanded && (
+                <>
+                  {node.children && renderTree(node.children, level + 1)}
+                  {showInput && inputParentId === node.id && renderInputRow(level + 1)}
+                </>
+              )}
+            </div>
+          </React.Fragment>
+        );
+      }
+
+      // Prompt / 其他：直接渲染行
+      return (
+        <React.Fragment key={node.id}>
+          {rowContent}
         </React.Fragment>
       );
     });
@@ -364,13 +534,21 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
       </div>
 
       {activeView === 'prompts' && (
-        <div className="flex-1 overflow-y-auto pb-2 scroll-smooth" onContextMenu={(e) => e.preventDefault()}>
+        <div
+          className="flex-1 overflow-y-auto pb-2 scroll-smooth"
+          onContextMenu={(e) => e.preventDefault()}
+          onDragOver={handleDragOverRoot}
+          onDrop={handleDropOnRoot}
+          onDragLeave={() => setIsDropOnRoot(false)}
+        >
           <div className="flex items-center px-4 py-2 font-semibold text-xs text-[var(--text-secondary)] cursor-pointer hover:text-[var(--text-primary)]">
             <ChevronDown size={14} className="mr-1" />
             <span>{t('sidepanel.prompts', language)}</span>
           </div>
 
-          <div className="py-1">
+          <div className={`py-1 min-h-[40px] ${isDropOnRoot ? 'bg-blue-500/5' : ''}`}
+            style={isDropOnRoot ? { boxShadow: 'inset 0 0 0 2px rgba(59,130,246,0.3)', borderRadius: '0.5rem' } : undefined}
+          >
             {loading ? (
               <div className="p-4 text-xs text-center text-[var(--text-secondary)]">{t('sidepanel.loading', language)}</div>
             ) : (

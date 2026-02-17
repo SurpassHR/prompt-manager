@@ -138,15 +138,78 @@ impl Store {
     }
 
     fn delete_node_recursive(nodes: &mut Vec<TreeItem>, id: &str) {
-        // Remove item from current level
         if let Some(pos) = nodes.iter().position(|x| x.id == id) {
             nodes.remove(pos);
             return;
         }
-        // Or recurse into children
         for node in nodes.iter_mut() {
             Self::delete_node_recursive(&mut node.children, id);
         }
+    }
+
+    /// 从原位置取出节点（递归查找并移除）
+    fn extract_node_recursive(nodes: &mut Vec<TreeItem>, id: &str) -> Option<TreeItem> {
+        if let Some(pos) = nodes.iter().position(|x| x.id == id) {
+            return Some(nodes.remove(pos));
+        }
+        for node in nodes.iter_mut() {
+            if let Some(found) = Self::extract_node_recursive(&mut node.children, id) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// 检查 ancestor_id 是否是 descendant_id 的祖先（防止把文件夹拖入自身子树）
+    fn is_ancestor(nodes: &[TreeItem], ancestor_id: &str, descendant_id: &str) -> bool {
+        for node in nodes {
+            if node.id == ancestor_id {
+                // 在 ancestor 的子树中查找 descendant
+                return Self::find_node_recursive(&node.children, descendant_id).is_some();
+            }
+            if Self::is_ancestor(&node.children, ancestor_id, descendant_id) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn move_item(&self, item_id: String, new_parent_id: Option<String>) -> Result<TreeItem, String> {
+        let mut data = self.data.lock().map_err(|e| e.to_string())?;
+
+        // 防止将文件夹移动到自身子树中
+        if let Some(ref pid) = new_parent_id {
+            if *pid == item_id {
+                return Err("Cannot move item into itself".to_string());
+            }
+            if Self::is_ancestor(&data, &item_id, pid) {
+                return Err("Cannot move folder into its own subtree".to_string());
+            }
+        }
+
+        // 取出节点
+        let mut item = Self::extract_node_recursive(&mut data, &item_id)
+            .ok_or_else(|| "Item not found".to_string())?;
+
+        item.parent_id = new_parent_id.clone();
+
+        // 放入新位置
+        if let Some(pid) = new_parent_id {
+            let parent = Self::find_node_mut_recursive(&mut data, &pid)
+                .ok_or_else(|| "Target parent not found".to_string())?;
+            if parent.item_type != ItemType::Folder {
+                // 目标不是文件夹，放回原位再报错
+                data.push(item);
+                return Err("Target is not a folder".to_string());
+            }
+            parent.children.push(item.clone());
+        } else {
+            data.push(item.clone());
+        }
+
+        drop(data);
+        self.save()?;
+        Ok(item)
     }
 
     pub fn search(&self, query: String, filters: Option<SearchFilters>) -> Vec<SearchResult> {

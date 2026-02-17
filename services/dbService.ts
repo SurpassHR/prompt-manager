@@ -59,6 +59,10 @@ class TauriDatabaseService implements IDatabaseService {
     await invoke('delete_item', { id });
   }
 
+  async moveItem(itemId: string, newParentId: string | null): Promise<TreeItem> {
+    return await invoke<TreeItem>('move_item', { itemId, newParentId });
+  }
+
   async searchItems(query: string, filters?: SearchFilters): Promise<SearchResult[]> {
     return await invoke<SearchResult[]>('search_items', { query, filters });
   }
@@ -189,6 +193,33 @@ class MockDatabaseService implements IDatabaseService {
   async deleteItem(id: string): Promise<void> {
     await this.delay(100);
     MOCK_DATA_STORE = this.deleteNodeRecursively(MOCK_DATA_STORE, id);
+  }
+
+  async moveItem(itemId: string, newParentId: string | null): Promise<TreeItem> {
+    await this.delay(50);
+    const item = this.extractNode(MOCK_DATA_STORE, itemId);
+    if (!item) throw new Error('Item not found');
+    item.parentId = newParentId || undefined;
+    if (newParentId) {
+      const parent = this.findNode(MOCK_DATA_STORE, newParentId);
+      if (!parent || parent.type !== 'folder') throw new Error('Target is not a folder');
+      if (!parent.children) parent.children = [];
+      parent.children.push(item);
+    } else {
+      MOCK_DATA_STORE.push(item);
+    }
+    return item;
+  }
+
+  private extractNode(nodes: TreeItem[], id: string): TreeItem | null {
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].id === id) return nodes.splice(i, 1)[0];
+      if (nodes[i].children) {
+        const found = this.extractNode(nodes[i].children!, id);
+        if (found) return found;
+      }
+    }
+    return null;
   }
 
   async searchItems(query: string, filters?: SearchFilters): Promise<SearchResult[]> {
@@ -363,6 +394,34 @@ class LocalStorageDatabaseService implements IDatabaseService {
     let data = this.getData();
     data = this.deleteNodeRecursively(data, id);
     this.saveData(data);
+  }
+
+  async moveItem(itemId: string, newParentId: string | null): Promise<TreeItem> {
+    const data = this.getData();
+    const item = this.extractNode(data, itemId);
+    if (!item) throw new Error('Item not found');
+    item.parentId = newParentId || undefined;
+    if (newParentId) {
+      const parent = this.findNode(data, newParentId);
+      if (!parent || parent.type !== 'folder') throw new Error('Target is not a folder');
+      if (!parent.children) parent.children = [];
+      parent.children.push(item);
+    } else {
+      data.push(item);
+    }
+    this.saveData(data);
+    return item;
+  }
+
+  private extractNode(nodes: TreeItem[], id: string): TreeItem | null {
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].id === id) return nodes.splice(i, 1)[0];
+      if (nodes[i].children) {
+        const found = this.extractNode(nodes[i].children!, id);
+        if (found) return found;
+      }
+    }
+    return null;
   }
 
   async searchItems(query: string, filters?: SearchFilters): Promise<SearchResult[]> {

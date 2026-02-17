@@ -42,9 +42,14 @@ fn search_items(query: String, filters: Option<SearchFilters>, store: State<Stor
     store.search(query, filters)
 }
 
+#[tauri::command]
+fn move_item(item_id: String, new_parent_id: Option<String>, store: State<Store>) -> Result<TreeItem, String> {
+    store.move_item(item_id, new_parent_id)
+}
+
 fn main() {
     tauri::Builder::default()
-        .manage(Store::new(&tauri::Config::default())) // This assumes we can construct Config or defer init
+        .manage(Store::new(&tauri::Config::default()))
         .setup(|app| {
              let handle = app.handle();
              let store = Store::new(&handle.config());
@@ -57,7 +62,8 @@ fn main() {
             add_item,
             update_item,
             delete_item,
-            search_items
+            search_items,
+            move_item
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

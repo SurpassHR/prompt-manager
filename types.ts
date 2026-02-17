@@ -81,6 +81,7 @@ export interface IDatabaseService {
   addItem(parentId: string | null, item: Omit<TreeItem, 'id' | 'children'>): Promise<TreeItem>;
   updateItem(id: string, updates: Partial<TreeItem>): Promise<TreeItem>;
   deleteItem(id: string): Promise<void>;
+  moveItem(itemId: string, newParentId: string | null): Promise<TreeItem>;
   searchItems(query: string, filters?: SearchFilters): Promise<SearchResult[]>;
 }
 
