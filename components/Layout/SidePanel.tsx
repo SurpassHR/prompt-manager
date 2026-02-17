@@ -252,6 +252,26 @@ const SidePanel: React.FC<SidePanelProps> = ({ isVisible, activeView, onSelectPr
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', node.id);
     setDragItemId(node.id);
+
+    // 修复 HiDPI 缩放导致拖拽预览被放大的问题
+    const dpr = window.devicePixelRatio || 1;
+    if (dpr !== 1) {
+      const dragEl = e.currentTarget as HTMLElement;
+      const rect = dragEl.getBoundingClientRect();
+      const clone = dragEl.cloneNode(true) as HTMLElement;
+      clone.style.width = `${rect.width}px`;
+      clone.style.height = `${rect.height}px`;
+      clone.style.transform = `scale(${1 / dpr})`;
+      clone.style.transformOrigin = 'top left';
+      clone.style.position = 'fixed';
+      clone.style.top = '-9999px';
+      clone.style.left = '-9999px';
+      clone.style.pointerEvents = 'none';
+      clone.style.zIndex = '-1';
+      document.body.appendChild(clone);
+      e.dataTransfer.setDragImage(clone, (e.clientX - rect.left) / dpr, (e.clientY - rect.top) / dpr);
+      requestAnimationFrame(() => document.body.removeChild(clone));
+    }
   };
 
   const handleDragEnd = () => {

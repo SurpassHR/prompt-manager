@@ -2,7 +2,9 @@
 import { IDatabaseService, TreeItem, SearchResult, SearchMatch, PromptVersion, SearchFilters } from '../types';
 
 // CONFIGURATION
-const STORAGE_TYPE = import.meta.env.VITE_STORAGE_TYPE || 'api';
+// 自动检测运行环境：Tauri 窗口内使用 Rust 后端，浏览器中使用 localStorage
+const IS_TAURI = !!(window as any).__TAURI_INTERNALS__;
+const STORAGE_TYPE = import.meta.env.VITE_STORAGE_TYPE || (IS_TAURI ? 'tauri' : 'local');
 const API_BASE_URL = 'http://localhost:8000';
 
 /* --- TAURI IMPLEMENTATION (Pure Rust Backend) --- */
