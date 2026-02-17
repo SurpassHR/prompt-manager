@@ -1,5 +1,5 @@
 import React from 'react';
-import { Moon, Sun, Type, Laptop, Search, Globe } from 'lucide-react';
+import { Moon, Sun, Type, Laptop, Search, Globe, PanelTop, AppWindow } from 'lucide-react';
 import { AppSettings } from '../types';
 import { t } from '../utils/i18n';
 
@@ -101,6 +101,39 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ settings, onUpdateSettings })
                     `}
                   >
                     <Laptop size={14} /> {t('settings.theme.system', lang)}
+                  </button>
+                </div>
+              </div>
+
+              {/* Title Bar Style */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-medium text-base">{t('settings.titleBar' as any, lang)}</label>
+                </div>
+                <p className="text-sm text-[var(--text-secondary)] mb-2">{t('settings.titleBarDesc' as any, lang)}</p>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => onUpdateSettings({ ...settings, titleBarStyle: 'native' })}
+                    className={`
+                      flex items-center gap-2 px-4 py-2 rounded border text-sm transition-all
+                      ${(settings.titleBarStyle || 'native') === 'native'
+                        ? 'bg-blue-600/10 border-blue-600 text-blue-500'
+                        : 'bg-[var(--input-bg)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--item-hover)]'}
+                    `}
+                  >
+                    <AppWindow size={14} /> {t('settings.titleBar.native' as any, lang)}
+                  </button>
+                  <button
+                    onClick={() => onUpdateSettings({ ...settings, titleBarStyle: 'custom' })}
+                    className={`
+                      flex items-center gap-2 px-4 py-2 rounded border text-sm transition-all
+                      ${settings.titleBarStyle === 'custom'
+                        ? 'bg-blue-600/10 border-blue-600 text-blue-500'
+                        : 'bg-[var(--input-bg)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--item-hover)]'}
+                    `}
+                  >
+                    <PanelTop size={14} /> {t('settings.titleBar.custom' as any, lang)}
                   </button>
                 </div>
               </div>

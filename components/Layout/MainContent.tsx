@@ -188,6 +188,20 @@ const MainContent: React.FC<MainContentProps> = ({
                         </select>
                     </div>
 
+                    {/* 标题栏样式 */}
+                    <div className="mb-5">
+                        <label className="text-sm font-medium text-[var(--text-primary)]">{t('settings.titleBar' as any, lang)}</label>
+                        <p className="text-xs text-[var(--text-secondary)] mt-0.5 mb-2">{t('settings.titleBarDesc' as any, lang)}</p>
+                        <select
+                            value={settings.titleBarStyle || 'native'}
+                            onChange={(e) => onUpdateSettings({ ...settings, titleBarStyle: e.target.value as any })}
+                            className="w-64 bg-[var(--input-bg)] border border-[var(--border-color)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-md focus:outline-none focus:border-blue-500"
+                        >
+                            <option value="native">{t('settings.titleBar.native' as any, lang)}</option>
+                            <option value="custom">{t('settings.titleBar.custom' as any, lang)}</option>
+                        </select>
+                    </div>
+
                     {/* 字号 */}
                     <div className="mb-5">
                         <label className="text-sm font-medium text-[var(--text-primary)]">{t('settings.editorFontSize', lang)}</label>

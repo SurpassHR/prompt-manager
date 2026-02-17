@@ -3,6 +3,7 @@ import ActivityBar from './components/Layout/ActivityBar';
 import SidePanel from './components/Layout/SidePanel';
 import MainContent from './components/Layout/MainContent';
 import StatusBar from './components/Layout/StatusBar';
+import TitleBar from './components/Layout/TitleBar';
 import { ViewMode, EditorHighlight, EditorTab, ItemType, AppSettings } from './types';
 import { dbService } from './services/dbService';
 import { AlertCircle, X } from 'lucide-react';
@@ -32,7 +33,8 @@ const App: React.FC = () => {
             theme: 'system', // Default to system
             language: 'en',
             editorFontSize: 14,
-            editorFontFamily: "'Menlo', 'Monaco', 'Courier New', monospace"
+            editorFontFamily: "'Menlo', 'Monaco', 'Courier New', monospace",
+            titleBarStyle: 'native'
         };
     });
 
@@ -70,6 +72,17 @@ const App: React.FC = () => {
     useEffect(() => {
         localStorage.setItem('appSettings', JSON.stringify(settings));
     }, [settings]);
+
+    // Toggle window decorations based on titleBarStyle setting
+    useEffect(() => {
+        const IS_TAURI = !!(window as any).__TAURI_INTERNALS__;
+        if (!IS_TAURI) return;
+
+        import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+            const win = getCurrentWindow();
+            win.setDecorations(settings.titleBarStyle !== 'custom');
+        }).catch(() => { });
+    }, [settings.titleBarStyle]);
 
     const isSidebarVisible = activeView !== 'none';
     const lang = settings.language;
@@ -243,6 +256,10 @@ const App: React.FC = () => {
     return (
         <ToastProvider>
             <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] p-2 gap-2 relative transition-colors duration-200">
+                {/* Custom Title Bar */}
+                {settings.titleBarStyle === 'custom' && (
+                    <TitleBar language={lang} />
+                )}
                 {/* ... existing content ... */}
                 {/* Copied from original file, just wrapping */}
                 {/* Top Main Area */}

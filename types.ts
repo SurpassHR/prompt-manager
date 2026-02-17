@@ -90,9 +90,12 @@ export type ViewMode = 'prompts' | 'search' | 'extensions' | 'settings' | 'none'
 export type Theme = 'dark' | 'light' | 'system';
 export type Language = 'en' | 'zh';
 
+export type TitleBarStyle = 'native' | 'custom';
+
 export interface AppSettings {
   theme: Theme;
   language: Language;
   editorFontSize: number;
   editorFontFamily: string;
+  titleBarStyle: TitleBarStyle;
 }

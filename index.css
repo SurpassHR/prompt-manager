@@ -18,6 +18,8 @@
   --item-hover: #27272a;
   --input-bg: #27272a;
   --modal-bg: #18181b;
+  --bg-titlebar: #0f0f11;
+  color-scheme: dark;
 }
 
 [data-theme='light'] {
@@ -37,7 +39,10 @@
   --item-hover: #f4f4f5;
   --input-bg: #ffffff;
   --modal-bg: #ffffff;
+  --bg-titlebar: #f9f9fa;
+  color-scheme: light;
 }
+
 
 /* Custom scrollbar - thinner and rounded */
 ::-webkit-scrollbar {
