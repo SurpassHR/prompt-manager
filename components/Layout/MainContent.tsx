@@ -526,7 +526,7 @@ const MainContent: React.FC<MainContentProps> = ({
                             key={tab.id}
                             onClick={() => onSwitchTab(tab.id)}
                             className={`
-                flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer rounded-md mr-1 transition-colors
+                group flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer rounded-md mr-1 transition-colors
                 ${tab.id === activeTabId ? 'bg-[var(--item-hover)] text-[var(--text-primary)] font-medium' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--item-hover)]/50'}
               `}
                         >
