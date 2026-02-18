@@ -255,62 +255,62 @@ const App: React.FC = () => {
 
     return (
         <ToastProvider>
-            <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] p-2 gap-2 relative transition-colors duration-200">
+            <div className="flex flex-col h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] relative transition-colors duration-200">
                 {/* Custom Title Bar */}
                 {settings.titleBarStyle === 'custom' && (
                     <TitleBar language={lang} />
                 )}
-                {/* ... existing content ... */}
-                {/* Copied from original file, just wrapping */}
-                {/* Top Main Area */}
-                <div className="flex-1 flex flex-row overflow-hidden">
-                    {/* ... */}
-                    {/* Left: Activity Bar */}
-                    <div className="flex-shrink-0 mr-2 h-full">
-                        <ActivityBar
-                            activeView={activeView}
-                            onViewChange={setActiveView}
-                            onOpenSettings={handleOpenSettings}
-                            language={lang}
+                <div className="flex-1 flex flex-col p-2 gap-2 overflow-hidden">
+                    {/* Top Main Area */}
+                    <div className="flex-1 flex flex-row overflow-hidden">
+                        {/* ... */}
+                        {/* Left: Activity Bar */}
+                        <div className="flex-shrink-0 mr-2 h-full">
+                            <ActivityBar
+                                activeView={activeView}
+                                onViewChange={setActiveView}
+                                onOpenSettings={handleOpenSettings}
+                                language={lang}
+                            />
+                        </div>
+
+                        {/* Left: Sidebar Panel (Collapsible) + Resizer */}
+                        {isSidebarVisible && (
+                            <>
+                                <SidePanel
+                                    isVisible={isSidebarVisible}
+                                    activeView={activeView}
+                                    onSelectPrompt={handleOpenPrompt}
+                                    language={lang}
+                                    width={sidebarWidth}
+                                />
+                                {/* Resizer Handle */}
+                                <div
+                                    className="w-2 hover:bg-blue-500/10 active:bg-blue-500/30 cursor-col-resize transition-colors flex-shrink-0 z-10"
+                                    onMouseDown={startResizing}
+                                />
+                            </>
+                        )}
+
+                        {/* Center: Editor Area */}
+                        <MainContent
+                            tabs={tabs}
+                            activeTabId={activeTabId}
+                            onSwitchTab={setActiveTabId}
+                            onCloseTab={handleTabCloseRequest}
+                            onUpdateTab={handleUpdateTab}
+                            onSave={handleSave}
+                            highlight={editorHighlight}
+                            settings={settings}
+                            onUpdateSettings={setSettings}
+                            theme={currentTheme === 'light' ? 'light' : 'vs-dark'}
                         />
+
                     </div>
 
-                    {/* Left: Sidebar Panel (Collapsible) + Resizer */}
-                    {isSidebarVisible && (
-                        <>
-                            <SidePanel
-                                isVisible={isSidebarVisible}
-                                activeView={activeView}
-                                onSelectPrompt={handleOpenPrompt}
-                                language={lang}
-                                width={sidebarWidth}
-                            />
-                            {/* Resizer Handle */}
-                            <div
-                                className="w-2 hover:bg-blue-500/10 active:bg-blue-500/30 cursor-col-resize transition-colors flex-shrink-0 z-10"
-                                onMouseDown={startResizing}
-                            />
-                        </>
-                    )}
-
-                    {/* Center: Editor Area */}
-                    <MainContent
-                        tabs={tabs}
-                        activeTabId={activeTabId}
-                        onSwitchTab={setActiveTabId}
-                        onCloseTab={handleTabCloseRequest}
-                        onUpdateTab={handleUpdateTab}
-                        onSave={handleSave}
-                        highlight={editorHighlight}
-                        settings={settings}
-                        onUpdateSettings={setSettings}
-                        theme={currentTheme === 'light' ? 'light' : 'vs-dark'}
-                    />
-
+                    {/* Bottom: Status Bar */}
+                    <StatusBar language={lang} />
                 </div>
-
-                {/* Bottom: Status Bar */}
-                <StatusBar language={lang} />
 
                 {/* Close Confirmation Modal */}
                 {showCloseModal && (
@@ -349,7 +349,7 @@ const App: React.FC = () => {
                     </div>
                 )}
             </div>
-        </ToastProvider>
+        </ToastProvider >
     );
 };
 

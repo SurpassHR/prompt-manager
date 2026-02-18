@@ -1,5 +1,5 @@
-import React from 'react';
-import { Minus, Square, X, Copy } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Minus, X, Copy } from 'lucide-react';
 import { Language } from '../../types';
 
 const IS_TAURI = !!(window as any).__TAURI_INTERNALS__;
@@ -9,42 +9,50 @@ interface TitleBarProps {
 }
 
 const TitleBar: React.FC<TitleBarProps> = ({ language }) => {
-    const handleMinimize = async () => {
-        if (!IS_TAURI) return;
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        getCurrentWindow().minimize();
-    };
+    // 预加载窗口实例，避免 mouseDown 时的 async 延迟
+    const winRef = useRef<any>(null);
 
-    const handleMaximize = async () => {
+    useEffect(() => {
         if (!IS_TAURI) return;
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const win = getCurrentWindow();
+        import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+            winRef.current = getCurrentWindow();
+        });
+    }, []);
+
+    const handleMinimize = () => winRef.current?.minimize();
+    const handleMaximize = async () => {
+        const win = winRef.current;
+        if (!win) return;
         if (await win.isMaximized()) {
             win.unmaximize();
         } else {
             win.maximize();
         }
     };
+    const handleClose = () => winRef.current?.close();
 
-    const handleClose = async () => {
-        if (!IS_TAURI) return;
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        getCurrentWindow().close();
+    const handleMouseDown = (e: React.MouseEvent) => {
+        // 仅在左键点击拖拽区域时触发
+        if (e.button !== 0 || !winRef.current) return;
+        const target = e.target as HTMLElement;
+        if (target.closest('button')) return; // 不拦截按钮点击
+        e.preventDefault();
+        winRef.current.startDragging();
     };
 
     return (
         <div
-            className="titlebar flex items-center justify-between h-9 bg-[var(--bg-titlebar)] border-b border-[var(--border-color)] select-none flex-shrink-0 transition-colors duration-200"
-            data-tauri-drag-region
+            className="titlebar flex items-center justify-between h-9 bg-[var(--bg-titlebar)] border-b border-[var(--border-color)] select-none flex-shrink-0 transition-colors duration-200 cursor-default"
+            onMouseDown={handleMouseDown}
         >
-            {/* Left: App title */}
-            <div className="flex items-center pl-3 pointer-events-none" data-tauri-drag-region>
-                <span className="text-xs font-semibold text-[var(--text-secondary)] tracking-wide" data-tauri-drag-region>
+            {/* 左侧：应用标题 */}
+            <div className="flex items-center pl-3">
+                <span className="text-xs font-semibold text-[var(--text-secondary)] tracking-wide pointer-events-none">
                     Prompt Manager
                 </span>
             </div>
 
-            {/* Right: Window controls */}
+            {/* 右侧：窗口控制按钮 */}
             {IS_TAURI && (
                 <div className="flex items-center h-full">
                     <button
@@ -63,7 +71,7 @@ const TitleBar: React.FC<TitleBarProps> = ({ language }) => {
                     </button>
                     <button
                         onClick={handleClose}
-                        className="h-full px-3.5 flex items-center justify-center text-[var(--text-secondary)] hover:bg-red-600 hover:text-white transition-colors rounded-tr-2xl"
+                        className="h-full px-3.5 flex items-center justify-center text-[var(--text-secondary)] hover:bg-red-600 hover:text-white transition-colors"
                         title={language === 'zh' ? '关闭' : 'Close'}
                     >
                         <X size={14} />

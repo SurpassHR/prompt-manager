@@ -21,7 +21,8 @@
         "width": 1200,
         "center": true,
         "visible": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "decorations": false
       }
     ]
   },
