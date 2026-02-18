@@ -39,6 +39,17 @@ const MainContent: React.FC<MainContentProps> = ({
 
     const lang = settings.language;
 
+    // 自动为带空格的字体名加引号，避免 CSS 解析错误
+    const quotedFontFamily = settings.editorFontFamily
+        .split(',')
+        .map(f => {
+            f = f.trim();
+            if (!f || f.startsWith("'") || f.startsWith('"') || !f.includes(' ')) return f;
+            return `'${f}'`;
+        })
+        .filter(Boolean)
+        .join(', ');
+
     const activeTab = tabs.find(tab => tab.id === activeTabId);
 
     // 加载 tab 数据
@@ -475,6 +486,7 @@ const MainContent: React.FC<MainContentProps> = ({
                     <div className="flex-1 overflow-hidden">
                         {currentView === 'code' && !diffVersionId && (
                             <Editor
+                                key={`editor-${settings.editorFontSize}-${quotedFontFamily}`}
                                 language="markdown"
                                 value={activeTab.content}
                                 onChange={handleEditorChange}
@@ -482,7 +494,7 @@ const MainContent: React.FC<MainContentProps> = ({
                                 theme={theme}
                                 options={{
                                     fontSize: settings.editorFontSize,
-                                    fontFamily: settings.editorFontFamily,
+                                    fontFamily: quotedFontFamily,
                                     minimap: { enabled: false },
                                     wordWrap: 'on',
                                     lineNumbers: 'on',
@@ -499,12 +511,13 @@ const MainContent: React.FC<MainContentProps> = ({
 
                         {currentView === 'code' && diffVersionId && diffVersion && (
                             <Editor
+                                key={`diff-${settings.editorFontSize}-${quotedFontFamily}`}
                                 language="markdown"
                                 value={activeTab.content}
                                 theme={theme}
                                 options={{
                                     fontSize: settings.editorFontSize,
-                                    fontFamily: settings.editorFontFamily,
+                                    fontFamily: quotedFontFamily,
                                     readOnly: true,
                                     minimap: { enabled: false },
                                     wordWrap: 'on',
